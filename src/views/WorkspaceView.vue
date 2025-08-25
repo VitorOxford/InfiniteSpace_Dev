@@ -35,7 +35,15 @@ const artboardStyle = computed(() => ({
   transformOrigin: 'center center',
 }))
 
-function handleWrapperClick() {
+function handleWrapperClick(event) {
+  if (window.innerWidth <= 1024) {
+    const layersPanel = event.target.closest('.layers-panel');
+    const headerButton = event.target.closest('.mobile-layers-btn');
+    if (!layersPanel && !headerButton && isLayersPanelVisible.value) {
+      isLayersPanelVisible.value = false;
+    }
+  }
+
   if (store.workspace.isContextMenuVisible) {
     store.showContextMenu(false)
   }
@@ -48,8 +56,6 @@ function showUploadModal() {
   isUploadModalVisible.value = true;
 }
 
-// --- CORREÇÃO APLICADA ---
-// A função openNewProjectModal foi simplificada, pois não precisa mais fechar o modal de upload
 function openNewProjectModal() {
   isNewProjectModalVisible.value = true;
 }
@@ -86,12 +92,13 @@ onUnmounted(() => {
   <div
     class="workspace-layout"
     :class="{
-        'preview-mode': store.workspace.viewMode === 'preview',
-        'layers-panel-hidden': !isLayersPanelVisible
+      'preview-mode': store.workspace.viewMode === 'preview',
+      'layers-panel-hidden': !isLayersPanelVisible,
+      'layers-panel-visible': isLayersPanelVisible
     }"
     @click="handleWrapperClick"
   >
-    <AppHeader />
+    <AppHeader @toggle-layers-panel="isLayersPanelVisible = !isLayersPanelVisible" />
     <TopMenuBar @open-new-project-modal="isNewProjectModalVisible = true" />
 
     <ToolsSidebar
@@ -159,49 +166,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.workspace-layout {
-  display: grid;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-  grid-template-columns: var(--sidebar-width) 1fr var(--assets-width);
-  grid-template-rows: var(--header-height) 40px 1fr;
-  grid-template-areas:
-    'header header header'
-    'top-menu top-menu top-menu'
-    'tools  canvas layers';
-  position: relative;
-  transition: grid-template-columns 0.3s ease-in-out;
-}
-
-.workspace-layout.layers-panel-hidden {
-    grid-template-columns: var(--sidebar-width) 1fr 0;
-}
-.workspace-layout.layers-panel-hidden .layers-panel {
-    transform: translateX(100%);
-}
-
-
-.workspace-layout.preview-mode {
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: var(--header-height) 40px 1fr;
-  grid-template-areas:
-    'header header'
-    'top-menu top-menu'
-    'tools  canvas';
-}
-
-.app-header { grid-area: header; }
-.top-menu-bar { grid-area: top-menu; }
-.tools-sidebar { grid-area: tools; }
-.canvas-container { grid-area: canvas; }
-.layers-panel { grid-area: layers; }
-
-.tools-sidebar,
-.canvas-container,
-.layers-panel {
-  height: calc(100vh - var(--header-height) - 40px);
-}
+/* ESTILOS DE LAYOUT FORAM MOVIDOS PARA main.css */
 
 .canvas-container {
   overflow: hidden;

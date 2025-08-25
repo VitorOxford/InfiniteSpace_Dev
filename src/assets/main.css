@@ -1,8 +1,7 @@
-/* src/assets/main.css - VERSÃO COM RESPONSIVIDADE INTEGRADA */
+/* src/assets/main.css - VERSÃO CORRIGIDA E COMPLETA */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* ... (suas variáveis de cor, tipografia, etc., permanecem as mesmas) ... */
   --c-white: #ffffff;
   --c-black: #000000;
   --c-background: #f6f7f9;
@@ -42,13 +41,11 @@
   --assets-width: 300px;
 }
 
-*,
-*::before,
-*::after {
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  -webkit-tap-highlight-color: transparent; /* Remove o destaque azul ao tocar em links/botões no mobile */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -61,7 +58,7 @@ html {
 
 body {
   font-size: var(--fs-sm);
-  overflow: hidden; /* Previne o scroll da página inteira */
+  overflow: hidden;
 }
 
 button {
@@ -72,11 +69,57 @@ button {
 }
 
 /* ----------------------------------------- */
-/* --- CSS RESPONSIVO PARA DISPOSITIVOS MÓVEIS --- */
+/* --- LAYOUT PRINCIPAL (DESKTOP) --- */
+/* ----------------------------------------- */
+
+.workspace-layout {
+  display: grid;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  grid-template-columns: var(--sidebar-width) 1fr var(--assets-width);
+  grid-template-rows: var(--header-height) 40px 1fr;
+  grid-template-areas:
+    'header header header'
+    'top-menu top-menu top-menu'
+    'tools  canvas layers';
+  position: relative;
+  transition: grid-template-columns 0.3s ease-in-out;
+}
+
+.workspace-layout.preview-mode {
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-areas:
+    'header header'
+    'top-menu top-menu'
+    'tools  canvas';
+}
+
+/* Mapeia os componentes para as áreas da grid */
+.app-header { grid-area: header; }
+.top-menu-bar { grid-area: top-menu; }
+.tools-sidebar { grid-area: tools; }
+.canvas-container { grid-area: canvas; }
+.layers-panel { grid-area: layers; }
+
+.tools-sidebar,
+.canvas-container,
+.layers-panel {
+  height: calc(100vh - var(--header-height) - 40px);
+}
+
+.workspace-layout.layers-panel-hidden {
+  grid-template-columns: var(--sidebar-width) 1fr 0;
+}
+.workspace-layout.layers-panel-hidden .layers-panel {
+  transform: translateX(100%);
+}
+
+/* ----------------------------------------- */
+/* --- RESPONSIVIDADE (MOBILE) --- */
 /* ----------------------------------------- */
 @media (max-width: 1024px) {
   .workspace-layout {
-    /* Muda para uma única coluna, o canvas ocupa o espaço e as barras são flutuantes */
     grid-template-columns: 1fr !important;
     grid-template-rows: var(--header-height) 40px 1fr;
     grid-template-areas:
@@ -85,9 +128,8 @@ button {
       'canvas' !important;
   }
 
-  /* Transforma a barra de ferramentas em um menu inferior flutuante */
   .tools-sidebar {
-    grid-area: unset;
+    grid-area: unset !important;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -95,13 +137,12 @@ button {
     height: auto;
     flex-direction: row;
     justify-content: center;
-    background-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid var(--c-border);
     padding: var(--spacing-2);
     box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.08);
-    transform: translateY(0);
     z-index: 220;
   }
 
@@ -111,38 +152,32 @@ button {
   }
 
   .tool-drawer {
-    bottom: calc(100% + 8px); /* Abre para cima */
+    bottom: calc(100% + 8px);
     top: auto;
     left: 50%;
     transform: translateX(-50%);
   }
 
-  /* Transforma o painel de camadas em um overlay que desliza da direita */
   .layers-panel {
-    grid-area: unset;
+    grid-area: unset !important;
     position: fixed;
     right: 0;
     top: 0;
     bottom: 0;
-    width: 300px; /* Largura fixa quando aberto */
+    width: 300px;
     max-width: 85vw;
     height: 100vh !important;
-    transform: translateX(100%); /* Começa fora da tela */
+    transform: translateX(100%);
     transition: transform 0.3s ease-in-out;
     box-shadow: var(--shadow-lg);
     z-index: 250;
   }
 
-  /* Classe que o WorkspaceView vai usar para mostrar o painel */
   .workspace-layout.layers-panel-visible .layers-panel {
     transform: translateX(0);
   }
 
   .show-layers-btn {
-    display: none; /* Não precisamos mais deste botão */
-  }
-
-  .unit-controls, .document-title {
-    display: none; /* Oculta elementos para economizar espaço */
+    display: none !important;
   }
 }

@@ -2,8 +2,6 @@
 import { ref } from 'vue';
 import { useCanvasStore } from '@/stores/canvasStore';
 
-// --- CORREÇÃO ADICIONADA ---
-// Define a propriedade para controlar a visibilidade do modal
 const props = defineProps({
   isVisible: Boolean,
 });
@@ -77,23 +75,28 @@ function handleSubmit() {
 
 <style scoped>
 .modal-overlay {
-  /* Estilos do overlay... (copiar de outro modal se necessário) */
   position: fixed;
   top: 0; left: 0;
   width: 100vw; height: 100vh;
   background-color: rgba(0, 0, 0, 0.6);
   display: flex;
-  align-items: center;
   justify-content: center;
   z-index: 2000;
+
+  /* CORREÇÃO PARA TELAS PEQUENAS */
+  align-items: flex-start; /* Alinha no topo */
+  overflow-y: auto; /* Permite rolar a tela inteira */
+  padding: var(--spacing-5); /* Adiciona um respiro */
 }
 .modal-content {
   background: var(--c-surface);
   padding: var(--spacing-6);
   border-radius: var(--radius-lg);
-  width: 90%;
+  width: 100%;
   max-width: 450px;
   text-align: left;
+  margin-top: auto; /* Ajuda a centralizar verticalmente se houver espaço */
+  margin-bottom: auto; /* Ajuda a centralizar verticalmente se houver espaço */
 }
 .modal-title {
   font-size: 1.5rem;

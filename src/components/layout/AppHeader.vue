@@ -9,7 +9,7 @@ const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
 const subscriptionStore = useSubscriptionStore()
 const router = useRouter()
-const emit = defineEmits(['toggle-layers-panel'])
+const emit = defineEmits(['toggle-layers-panel']) // <-- Evento para controlar o painel
 
 
 const viewModeText = computed(() => {
@@ -309,10 +309,9 @@ async function logout() {
 @media (max-width: 1024px) {
     .mobile-layers-btn {
         display: flex;
-        margin-left: var(--spacing-2);
     }
-    .user-actions {
-        display: none; /* Opcional: Esconder ações de utilizador para simplificar */
+    .user-actions, .btn-secondary, .document-title, .divider, .unit-controls {
+        display: none;
     }
 }
 </style>
