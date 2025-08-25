@@ -792,10 +792,21 @@ export const useCanvasStore = defineStore('canvas', () => {
     workspace.isTransforming = isTransforming;
   }
 
-  function createBlankCanvas({ name, width, height, unit, dpi }) {
+ function createBlankCanvas({ name, width, height, unit, dpi }) {
     layers.value = [];
     selectedLayerId.value = null;
     globalHistoryStore.clearHistory();
+
+    // Redefine o estado do workspace para um novo projeto
+    Object.assign(workspace, {
+        pan: { x: 0, y: 0 },
+        zoom: 1,
+        viewMode: 'edit',
+        rulers: { visible: true, unit: 'cm' }, // <-- ADICIONE ESTA LINHA CORRIGIDA
+        grid: { visible: true },
+        // ... (redefina outras propriedades do workspace se necessário)
+    });
+
 
     let widthInPx = width;
     let heightInPx = height;
@@ -809,6 +820,10 @@ export const useCanvasStore = defineStore('canvas', () => {
       widthInPx = Math.round(width * pxPerIn);
       heightInPx = Math.round(height * pxPerIn);
     }
+
+    // CORREÇÃO: Garante que as dimensões do documento sejam atualizadas
+    workspace.document.width = widthInPx;
+    workspace.document.height = heightInPx;
 
     const canvas = document.createElement('canvas');
     canvas.width = widthInPx;

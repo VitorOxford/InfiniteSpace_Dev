@@ -8,7 +8,7 @@ import LassoOverlay from '@/components/canvas/LassoOverlay.vue'
 import HorizontalRuler from '@/components/canvas/HorizontalRuler.vue'
 import VerticalRuler from '@/components/canvas/VerticalRuler.vue'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import SelectionContextMenu from '@/components/common/SelectionContextMenu.vue'
@@ -30,7 +30,7 @@ let resizeObserver = null;
 
 const isUploadModalVisible = ref(false)
 const isNewProjectModalVisible = ref(false)
-const isLayersPanelDropdownVisible = ref(true) // Controla o novo dropdown
+const isLayersPanelDropdownVisible = ref(true)
 
 const showRulers = computed(() => store.workspace.viewMode === 'edit' && store.workspace.rulers.visible);
 
@@ -41,19 +41,31 @@ function updateWrapperDimensions() {
     }
 }
 
+// Lógica de observação do redimensionamento refatorada
+watch(canvasWrapperRef, (newEl) => {
+    if (newEl) {
+        if (resizeObserver) {
+            resizeObserver.disconnect();
+        }
+        resizeObserver = new ResizeObserver(updateWrapperDimensions);
+        resizeObserver.observe(newEl);
+        updateWrapperDimensions(); // Chama imediatamente ao observar
+    } else {
+        if (resizeObserver) {
+            resizeObserver.disconnect();
+        }
+    }
+});
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
-  if (canvasWrapperRef.value) {
-      resizeObserver = new ResizeObserver(updateWrapperDimensions);
-      resizeObserver.observe(canvasWrapperRef.value);
-  }
-  updateWrapperDimensions();
+  updateWrapperDimensions(); // Chama na montagem inicial
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
-  if (resizeObserver && canvasWrapperRef.value) {
-      resizeObserver.unobserve(canvasWrapperRef.value);
+  if (resizeObserver) {
+    resizeObserver.disconnect();
   }
 });
 
@@ -64,7 +76,6 @@ const artboardStyle = computed(() => ({
 }))
 
 function handleWrapperClick(event) {
-  // Fecha o painel de camadas se clicar fora dele
   const layersPanel = event.target.closest('.layers-panel-dropdown');
   const layersButton = event.target.closest('.layers-toggle-button');
   if (!layersPanel && !layersButton) {
@@ -195,39 +206,39 @@ function handleKeyDown(e) {
   display: grid;
   width: 100%;
   height: 100%;
+  grid-template-areas: "canvas";
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 
 .canvas-layout.rulers-visible {
+  grid-template-areas:
+    "corner ruler-h"
+    "ruler-v canvas";
   grid-template-columns: 30px 1fr;
   grid-template-rows: 30px 1fr;
 }
 
 .ruler-corner {
-  grid-area: 1 / 1 / 2 / 2;
+  grid-area: corner;
   background-color: var(--c-surface);
   border-bottom: 1px solid var(--c-border);
   border-right: 1px solid var(--c-border);
 }
 
 .ruler-h {
-  grid-area: 1 / 2 / 2 / 3;
+  grid-area: ruler-h;
 }
 
 .ruler-v {
-  grid-area: 2 / 1 / 3 / 2;
+  grid-area: ruler-v;
 }
 
 .canvas-area-wrapper {
-  grid-area: 1 / 1 / -1 / -1;
+  grid-area: canvas;
   overflow: hidden;
   position: relative;
   background-color: var(--c-background);
-}
-
-.canvas-layout.rulers-visible .canvas-area-wrapper {
-    grid-area: 2 / 2 / 3 / 3;
 }
 
 .empty-workspace-placeholder {
