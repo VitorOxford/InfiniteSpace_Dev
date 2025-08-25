@@ -5,6 +5,8 @@ import CanvasArea from '@/components/canvas/CanvasArea.vue'
 import LayersPanel from '@/components/layers/LayersPanel.vue'
 import DimensionLines from '@/components/canvas/DimensionLines.vue'
 import LassoOverlay from '@/components/canvas/LassoOverlay.vue'
+import HorizontalRuler from '@/components/canvas/HorizontalRuler.vue'
+import VerticalRuler from '@/components/canvas/VerticalRuler.vue'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
@@ -16,40 +18,43 @@ import SignatureModal from '@/components/modals/SignatureModal.vue'
 import UploadModal from '@/components/modals/UploadModal.vue'
 import NewProjectModal from '@/components/modals/NewProjectModal.vue'
 
-// -- OS PAINÉIS SÃO FLUTUANTES E REUTILIZÁVEIS --
 import ToolOptionsPanel from '@/components/layout/BrushSidebar.vue'
 import GlobalHistoryModal from '@/components/modals/GlobalHistoryModal.vue'
 import LayerHistoryModal from '@/components/modals/LayerHistoryModal.vue'
 
 const store = useCanvasStore()
 const toolsSidebarRef = ref(null)
+const canvasWrapperRef = ref(null)
+const wrapperDimensions = ref({ width: 0, height: 0 })
+let resizeObserver = null;
 
 const isUploadModalVisible = ref(false)
 const isNewProjectModalVisible = ref(false)
+const isLayersPanelDropdownVisible = ref(true) // Controla o novo dropdown
 
-// O controle do painel de camadas agora é feito pela store
-const isLayersPanelVisible = computed(() => store.getPanelState('layers')?.isVisible);
+const showRulers = computed(() => store.workspace.viewMode === 'edit' && store.workspace.rulers.visible);
 
-const isMobileLayout = ref(false)
-let isMobileUserAgent = false
-
-function checkLayoutMode() {
-  const isNowMobile = isMobileUserAgent || window.innerWidth <= 1024;
-  if (isNowMobile !== isMobileLayout.value) {
-    isMobileLayout.value = isNowMobile;
-  }
+function updateWrapperDimensions() {
+    if (canvasWrapperRef.value) {
+        const rect = canvasWrapperRef.value.getBoundingClientRect();
+        wrapperDimensions.value = { width: rect.width, height: rect.height };
+    }
 }
 
 onMounted(() => {
-  isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  checkLayoutMode();
-  window.addEventListener('resize', checkLayoutMode);
   window.addEventListener('keydown', handleKeyDown);
+  if (canvasWrapperRef.value) {
+      resizeObserver = new ResizeObserver(updateWrapperDimensions);
+      resizeObserver.observe(canvasWrapperRef.value);
+  }
+  updateWrapperDimensions();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', checkLayoutMode);
   window.removeEventListener('keydown', handleKeyDown);
+  if (resizeObserver && canvasWrapperRef.value) {
+      resizeObserver.unobserve(canvasWrapperRef.value);
+  }
 });
 
 
@@ -59,6 +64,13 @@ const artboardStyle = computed(() => ({
 }))
 
 function handleWrapperClick(event) {
+  // Fecha o painel de camadas se clicar fora dele
+  const layersPanel = event.target.closest('.layers-panel-dropdown');
+  const layersButton = event.target.closest('.layers-toggle-button');
+  if (!layersPanel && !layersButton) {
+      isLayersPanelDropdownVisible.value = false;
+  }
+
   if (store.workspace.isContextMenuVisible) {
     store.showContextMenu(false)
   }
@@ -93,7 +105,10 @@ function handleKeyDown(e) {
 
 <template>
   <div class="workspace-layout" @click="handleWrapperClick">
-    <TopMenuBar @open-new-project-modal="isNewProjectModalVisible = true" />
+    <TopMenuBar
+      @open-new-project-modal="isNewProjectModalVisible = true"
+      @toggle-layers-panel="isLayersPanelDropdownVisible = !isLayersPanelDropdownVisible"
+    />
 
     <main class="canvas-container">
       <div v-if="store.layers.length === 0" class="empty-workspace-placeholder">
@@ -106,15 +121,22 @@ function handleKeyDown(e) {
 
       <template v-else>
         <div v-if="store.workspace.viewMode === 'edit'" class="edit-mode-wrapper">
-          <CanvasArea :is-mobile="isMobileLayout">
-            <LassoOverlay />
-          </CanvasArea>
+          <div class="canvas-layout" :class="{ 'rulers-visible': showRulers }">
+              <div v-if="showRulers" class="ruler-corner"></div>
+              <HorizontalRuler v-if="showRulers" :width="wrapperDimensions.width" />
+              <VerticalRuler v-if="showRulers" :height="wrapperDimensions.height" />
+              <div class="canvas-area-wrapper" ref="canvasWrapperRef">
+                <CanvasArea>
+                    <LassoOverlay />
+                </CanvasArea>
+              </div>
+          </div>
         </div>
 
         <div v-else class="preview-mode-wrapper">
           <div class="artboard-viewport">
             <div class="artboard" :style="artboardStyle">
-               <CanvasArea :is-mobile="isMobileLayout">
+               <CanvasArea>
                 <LassoOverlay />
               </CanvasArea>
               <DimensionLines />
@@ -131,17 +153,15 @@ function handleKeyDown(e) {
         :mode="store.workspace.viewMode"
         @show-upload-modal="showUploadModal"
       />
-      <LayersPanel />
+      <LayersPanel :is-visible="isLayersPanelDropdownVisible" />
       <ToolOptionsPanel />
       <GlobalHistoryModal />
       <LayerHistoryModal />
-
       <ContextMenu v-if="store.workspace.isContextMenuVisible" />
       <SelectionContextMenu v-if="store.workspace.isSelectionContextMenuVisible" />
       <ResizeModal v-if="store.workspace.isResizeModalVisible" />
       <PreviewSidebar />
       <SignatureModal />
-
       <UploadModal
         :is-visible="isUploadModalVisible"
         @close="isUploadModalVisible = false"
@@ -162,7 +182,46 @@ function handleKeyDown(e) {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 100%;
+  width: 100%;
 }
+
+.edit-mode-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-layout {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.canvas-layout.rulers-visible {
+  grid-template-columns: 30px 1fr;
+  grid-template-rows: 30px 1fr;
+}
+
+.ruler-corner {
+  grid-area: 1 / 1 / 2 / 2;
+  background-color: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  border-right: 1px solid var(--c-border);
+}
+
+.canvas-area-wrapper {
+  grid-area: 1 / 1 / 2 / 2;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--c-background);
+}
+
+.canvas-layout.rulers-visible .canvas-area-wrapper {
+    grid-area: 2 / 2 / 3 / 3;
+}
+
 .empty-workspace-placeholder {
   color: var(--c-text-tertiary);
   text-align: center;
@@ -178,12 +237,9 @@ function handleKeyDown(e) {
   font-weight: var(--fw-semibold);
   color: var(--c-text-secondary);
 }
-.edit-mode-wrapper,
 .preview-mode-wrapper {
   width: 100%;
   height: 100%;
-}
-.preview-mode-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -202,7 +258,7 @@ function handleKeyDown(e) {
   width: 100%;
   height: 100%;
   max-width: 90vh;
-  max-height: calc(100vh - var(--header-height) - 128px);
+  max-height: calc(100vh - var(--top-menu-bar-height) - 128px);
   box-shadow: var(--shadow-lg);
   background-color: var(--c-background);
   transition: transform 0.2s ease-out;

@@ -2,7 +2,10 @@
 import { computed, ref, nextTick } from 'vue'
 import { useCanvasStore } from '@/stores/canvasStore'
 import AssetsSidebar from '@/components/layout/AssetsSidebar.vue'
-import FloatingPanel from '@/components/common/FloatingPanel.vue' // Importa o painel flutuante
+
+const props = defineProps({
+  isVisible: Boolean
+})
 
 const store = useCanvasStore()
 const isAssetsPanelVisible = ref(false)
@@ -101,7 +104,6 @@ function handleDropOnRoot(event) {
     draggedItem.value = null;
 }
 
-
 function handleContextMenu(event, item) {
   event.preventDefault();
   const isFolder = item.type === 'folder';
@@ -134,143 +136,126 @@ function isLayerDraggable(layer) {
     const folder = layer.folderId ? store.folders.find(f => f.id === layer.folderId) : null;
     return !folder || !folder.isLocked;
 }
+
 </script>
 
 <template>
   <div>
-    <FloatingPanel panel-id="layers" title="Camadas">
-      <div class="panel-header-actions">
-        <button @click="createNewFolder" title="Criar Nova Pasta">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><line x1="12" x2="12" y1="10" y2="16"></line><line x1="9" x2="15" y1="13" y2="13"></line></svg>
-        </button>
-        <button @click="store.togglePanel('globalHistory', true)" title="Histórico Global">📜</button>
-        <button
-            @click="isAssetsPanelVisible = !isAssetsPanelVisible"
-            class="btn btn-primary add-layer-btn"
-        >
-            + Adicionar
-        </button>
-      </div>
-      <div class="layers-list" @dragover.prevent @drop="handleDropOnRoot">
-        <div v-if="store.layers.length === 0 && store.folders.length === 0" class="empty-state">
-          <p>Sem camadas.</p>
-          <span>Adicione um ativo para começar.</span>
-        </div>
-
-        <div
-          v-for="(layer) in unfiledLayers"
-          :key="`layer-${layer.id}`"
-          class="layer-item-wrapper"
-          :draggable="isLayerDraggable(layer)"
-          @dragstart="handleDragStart($event, layer)"
-          @dragover.prevent
-          @drop.stop="handleDropOnLayer($event, layer)"
-        >
-          <div
-            class="layer-item"
-            :class="{ active: store.selectedLayerId === layer.id }"
-            @click="store.selectLayer(layer.id)"
-            @contextmenu="handleContextMenu($event, layer)"
+    <transition name="fade">
+      <aside v-if="isVisible" class="layers-panel-dropdown">
+        <div class="panel-header-actions">
+          <button @click="createNewFolder" title="Criar Nova Pasta">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><line x1="12" x2="12" y1="10" y2="16"></line><line x1="9" x2="15" y1="13" y2="13"></line></svg>
+          </button>
+          <button
+              @click="isAssetsPanelVisible = !isAssetsPanelVisible"
+              class="btn btn-primary add-layer-btn"
           >
-            <div class="layer-thumbnail">
-              <img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" />
-            </div>
-            <span class="layer-name">{{ layer.name }}</span>
-            <div class="layer-actions">
-               <button @click.stop="toggleVisibility(layer)" title="Mostrar/Ocultar Camada">
+              + Adicionar Ativo
+          </button>
+        </div>
+        <div class="layers-list" @dragover.prevent @drop="handleDropOnRoot">
+          <div v-if="store.layers.length === 0 && store.folders.length === 0" class="empty-state">
+            <p>Sem camadas.</p>
+            <span>Adicione um ativo para começar.</span>
+          </div>
+
+          <div v-for="(layer) in unfiledLayers" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)">
+            <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click="store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
+              <div class="layer-thumbnail">
+                <img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" />
+              </div>
+              <span class="layer-name">{{ layer.name }}</span>
+              <div class="layer-actions">
+                <button @click.stop="toggleVisibility(layer)" title="Mostrar/Ocultar Camada">
                   <svg v-if="layer.visible" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                   <svg v-else viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07l-2.22-2.22"/><line x1="1" y1="1" x2="23" y2="23" /></svg>
-               </button>
-               <button @click.stop="handleContextMenu($event, layer)" title="Mais Opções">
-                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
-               </button>
+                </button>
+                <button @click.stop="handleContextMenu($event, layer)" title="Mais Opções">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                </button>
+              </div>
+            </div>
+            <div v-if="store.selectedLayerId === layer.id" class="opacity-panel">
+              <label>Opacidade</label>
+              <input type="range" min="0" max="100" step="1" v-model="selectedLayerOpacity" class="opacity-slider" />
+              <span>{{ Math.round(selectedLayerOpacity) }}%</span>
             </div>
           </div>
-          <div v-if="store.selectedLayerId === layer.id" class="opacity-panel">
-            <label>Opacidade</label>
-            <input type="range" min="0" max="100" step="1" v-model="selectedLayerOpacity" class="opacity-slider" />
-            <span>{{ Math.round(selectedLayerOpacity) }}%</span>
-          </div>
-        </div>
 
-        <div class="folder-section">
-          <div
-              v-for="folder in folders"
-              :key="`folder-${folder.id}`"
-              class="folder-item-wrapper"
-              @dragover.prevent
-              @drop.stop="handleDropOnFolder($event, folder)"
-          >
-              <div class="folder-header" :class="{ 'is-locked': folder.isLocked }" @contextmenu="handleContextMenu($event, folder)" @click="folder.isOpen = !folder.isOpen">
-                  <button class="folder-toggle-btn">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron" :class="{'is-open': folder.isOpen}"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                  </button>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>
-                  <input v-if="editingFolderId === folder.id" type="text" :value="folder.name" @blur="finishEditing(folder, $event)" @keydown.enter.prevent="finishEditing(folder, $event)" @keydown.esc="editingFolderId = null" @click.stop class="folder-name-input" ref="inputRef" />
-                  <span v-else class="folder-name" @dblclick.stop="!folder.isLocked && startEditing(folder)">{{ folder.name }}</span>
-                   <div class="folder-actions">
-                      <button v-if="folder.isLocked" class="lock-icon" @click.stop="store.toggleFolderLock(folder.id)">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                      </button>
-                      <button class="more-options-btn" @click.stop="handleContextMenu($event, folder)" title="Mais Opções">
-                          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
-                      </button>
-                   </div>
-              </div>
-              <transition name="slide-fade">
-                   <div v-if="folder.isOpen" class="folder-content">
-                       <div
-                          v-for="layer in getLayersForFolder(folder.id)"
-                          :key="`layer-${layer.id}`"
-                          class="layer-item-wrapper"
-                          :draggable="isLayerDraggable(layer)"
-                          @dragstart="handleDragStart($event, layer)"
-                          @dragover.prevent
-                          @drop.stop="handleDropOnLayer($event, layer)"
-                      >
-                          <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click.stop="!folder.isLocked && store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
-                            <div class="layer-thumbnail">
-                                <img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" />
+          <div class="folder-section">
+            <div v-for="folder in folders" :key="`folder-${folder.id}`" class="folder-item-wrapper" @dragover.prevent @drop.stop="handleDropOnFolder($event, folder)">
+                <div class="folder-header" :class="{ 'is-locked': folder.isLocked }" @contextmenu="handleContextMenu($event, folder)" @click="folder.isOpen = !folder.isOpen">
+                    <button class="folder-toggle-btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron" :class="{'is-open': folder.isOpen}"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>
+                    <input v-if="editingFolderId === folder.id" type="text" :value="folder.name" @blur="finishEditing(folder, $event)" @keydown.enter.prevent="finishEditing(folder, $event)" @keydown.esc="editingFolderId = null" @click.stop class="folder-name-input" ref="inputRef" />
+                    <span v-else class="folder-name" @dblclick.stop="!folder.isLocked && startEditing(folder)">{{ folder.name }}</span>
+                    <div class="folder-actions">
+                        <button v-if="folder.isLocked" class="lock-icon" @click.stop="store.toggleFolderLock(folder.id)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></button>
+                        <button class="more-options-btn" @click.stop="handleContextMenu($event, folder)" title="Mais Opções"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+                    </div>
+                </div>
+                <transition name="slide-fade">
+                     <div v-if="folder.isOpen" class="folder-content">
+                        <div v-for="layer in getLayersForFolder(folder.id)" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)">
+                            <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click.stop="!folder.isLocked && store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
+                                <div class="layer-thumbnail"><img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" /></div>
+                                <span class="layer-name">{{ layer.name }}</span>
+                                <div class="layer-actions">
+                                    <button @click.stop="toggleVisibility(layer)" :disabled="folder.isLocked" title="Mostrar/Ocultar Camada"><svg v-if="layer.visible" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg><svg v-else viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07l-2.22-2.22"/><line x1="1" y1="1" x2="23" y2="23" /></svg></button>
+                                    <button @click.stop="handleContextMenu($event, layer)" title="Mais Opções"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button>
+                                </div>
                             </div>
-                            <span class="layer-name">{{ layer.name }}</span>
-                            <div class="layer-actions">
-                                <button @click.stop="toggleVisibility(layer)" :disabled="folder.isLocked" title="Mostrar/Ocultar Camada">
-                                    <svg v-if="layer.visible" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                                    <svg v-else viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07l-2.22-2.22"/><line x1="1" y1="1" x2="23" y2="23" /></svg>
-                                </button>
-                                <button @click.stop="handleContextMenu($event, layer)" title="Mais Opções">
-                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
-                                </button>
+                            <div v-if="store.selectedLayerId === layer.id" class="opacity-panel">
+                                <label>Opacidade</label>
+                                <input type="range" min="0" max="100" step="1" :value="selectedLayerOpacity" @input="selectedLayerOpacity = $event.target.value" :disabled="folder.isLocked" class="opacity-slider" />
+                                <span>{{ Math.round(selectedLayerOpacity) }}%</span>
                             </div>
-                          </div>
-                          <div v-if="store.selectedLayerId === layer.id" class="opacity-panel">
-                            <label>Opacidade</label>
-                            <input type="range" min="0" max="100" step="1" :value="selectedLayerOpacity" @input="selectedLayerOpacity = $event.target.value" :disabled="folder.isLocked" class="opacity-slider" />
-                            <span>{{ Math.round(selectedLayerOpacity) }}%</span>
-                          </div>
-                      </div>
-                      <div v-if="getLayersForFolder(folder.id).length === 0" class="empty-folder-text">
-                          Esta pasta está vazia.
-                      </div>
-                  </div>
-              </transition>
+                        </div>
+                        <div v-if="getLayersForFolder(folder.id).length === 0" class="empty-folder-text">Esta pasta está vazia.</div>
+                    </div>
+                </transition>
+            </div>
           </div>
-        </div>
-      </div>
-    </FloatingPanel>
 
+        </div>
+      </aside>
+    </transition>
     <AssetsSidebar :is-visible="isAssetsPanelVisible" @close="isAssetsPanelVisible = false" />
   </div>
 </template>
 
 <style scoped>
-/* O container principal é o FloatingPanel, então não precisa de estilos de posicionamento aqui */
+.layers-panel-dropdown {
+  position: absolute;
+  top: calc(var(--top-menu-bar-height) + var(--spacing-2));
+  right: var(--spacing-4);
+  width: 300px;
+  max-height: calc(100vh - var(--top-menu-bar-height) - 80px);
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
 .panel-header-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
   padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--c-border);
+  flex-shrink: 0;
 }
 
 .panel-header-actions button {
@@ -298,7 +283,6 @@ function isLayerDraggable(layer) {
   flex-grow: 1;
   overflow-y: auto;
   padding: var(--spacing-2);
-  height: calc(100% - 50px); /* Ajuste para o header interno */
 }
 .layer-item-wrapper {
   margin-bottom: var(--spacing-1);
@@ -315,6 +299,7 @@ function isLayerDraggable(layer) {
   transition: background-color 0.15s ease-in-out;
   position: relative;
 }
+
 .layer-thumbnail {
   width: 40px;
   height: 40px;
