@@ -123,8 +123,8 @@ function handleKeyDown(e) {
         <div v-if="store.workspace.viewMode === 'edit'" class="edit-mode-wrapper">
           <div class="canvas-layout" :class="{ 'rulers-visible': showRulers }">
               <div v-if="showRulers" class="ruler-corner"></div>
-              <HorizontalRuler v-if="showRulers" :width="wrapperDimensions.width" />
-              <VerticalRuler v-if="showRulers" :height="wrapperDimensions.height" />
+              <HorizontalRuler v-if="showRulers" :width="wrapperDimensions.width" class="ruler-h" />
+              <VerticalRuler v-if="showRulers" :height="wrapperDimensions.height" class="ruler-v" />
               <div class="canvas-area-wrapper" ref="canvasWrapperRef">
                 <CanvasArea>
                     <LassoOverlay />
@@ -211,8 +211,16 @@ function handleKeyDown(e) {
   border-right: 1px solid var(--c-border);
 }
 
+.ruler-h {
+  grid-area: 1 / 2 / 2 / 3;
+}
+
+.ruler-v {
+  grid-area: 2 / 1 / 3 / 2;
+}
+
 .canvas-area-wrapper {
-  grid-area: 1 / 1 / 2 / 2;
+  grid-area: 1 / 1 / -1 / -1;
   overflow: hidden;
   position: relative;
   background-color: var(--c-background);
