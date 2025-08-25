@@ -22,33 +22,30 @@ function handleTouchStart(event, item, isFolder = false) {
     const folder = item.folderId ? store.folders.find(f => f.id === item.folderId) : null;
     if (folder?.isLocked || (isFolder && item.isLocked)) return;
 
-    // Inicia um timer. Se o dedo ainda estiver pressionado após 300ms, inicia o arraste.
+    // Captura o elemento alvo imediatamente
+    const targetElement = event.currentTarget;
+
     touchTimeout = setTimeout(() => {
         isDraggingTouch = true;
         draggedItem.value = { item, isFolder };
 
-        // Cria a imagem fantasma para o arraste
-        const targetElement = event.currentTarget;
-        touchDragImage = targetElement.cloneNode(true);
-        touchDragImage.style.position = 'fixed';
-        touchDragImage.style.zIndex = '1000';
-        touchDragImage.style.opacity = '0.7';
-        touchDragImage.style.pointerEvents = 'none';
-        touchDragImage.style.transform = 'translate(-50%, -50%)'; // Centraliza a imagem no dedo
-        document.body.appendChild(touchDragImage);
+        if (targetElement) {
+            touchDragImage = targetElement.cloneNode(true);
+            touchDragImage.style.position = 'fixed';
+            touchDragImage.style.zIndex = '1000';
+            touchDragImage.style.opacity = '0.7';
+            touchDragImage.style.pointerEvents = 'none';
+            touchDragImage.style.transform = 'translate(-50%, -50%)';
+            document.body.appendChild(touchDragImage);
+            handleTouchMove(event); // Posiciona a imagem inicial
+        }
+    }, 300);
 
-        // Posiciona a imagem inicial
-        handleTouchMove(event);
-
-    }, 300); // 300ms para "long press"
-
-    // Adiciona event listeners globais
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('touchend', handleTouchEnd, { once: true });
 }
 
 function handleTouchMove(event) {
-    // Se o dedo se mover antes do timer, cancela o início do arraste (considera como scroll)
     if (touchTimeout) {
         clearTimeout(touchTimeout);
         touchTimeout = null;
@@ -63,22 +60,14 @@ function handleTouchMove(event) {
 }
 
 function handleTouchEnd(event) {
-    // Se o dedo for solto antes do timer, é um clique, então cancela tudo.
     clearTimeout(touchTimeout);
     touchTimeout = null;
 
-    if (touchDragImage) {
-        document.body.removeChild(touchDragImage);
-        touchDragImage = null;
-    }
-
     if (isDraggingTouch && draggedItem.value) {
         const touch = event.changedTouches[0];
-        // Esconde temporariamente a imagem fantasma para não interferir na detecção do elemento
         if(touchDragImage) touchDragImage.style.display = 'none';
         const endElement = document.elementFromPoint(touch.clientX, touch.clientY);
         if(touchDragImage) touchDragImage.style.display = '';
-
 
         if (endElement) {
             const dropTargetLayer = endElement.closest('.layer-item-wrapper');
@@ -88,18 +77,22 @@ function handleTouchEnd(event) {
             if (dropTargetLayer) {
                 const targetId = dropTargetLayer.dataset.layerId;
                 const targetLayer = store.layers.find(l => l.id === targetId);
-                if (targetLayer) handleDropOnLayer(event, targetLayer);
+                if (targetLayer) handleDropOnLayer(null, targetLayer);
             } else if (dropTargetFolder) {
                 const targetId = dropTargetFolder.dataset.folderId;
                 const targetFolder = store.folders.find(f => f.id === targetId);
-                if (targetFolder) handleDropOnFolder(event, targetFolder);
+                if (targetFolder) handleDropOnFolder(null, targetFolder);
             } else if (dropTargetRoot) {
-                handleDropOnRoot(event);
+                handleDropOnRoot(null);
             }
         }
     }
 
-    // Limpa o estado
+    if (touchDragImage) {
+        document.body.removeChild(touchDragImage);
+        touchDragImage = null;
+    }
+
     draggedItem.value = null;
     isDraggingTouch = false;
     document.removeEventListener('touchmove', handleTouchMove);
@@ -200,8 +193,6 @@ function handleContextMenu(event, item) {
   store.showContextMenu(true, { x: event.clientX, y: event.clientY }, item.id, isFolder);
 }
 
-// --- CORREÇÃO APLICADA AQUI ---
-// O inputRef agora é uma função que atribui o elemento DOM diretamente.
 async function startEditing(folder) {
   if (folder.isLocked) return;
   editingFolderId.value = folder.id;
@@ -252,7 +243,7 @@ function isLayerDraggable(layer) {
             <span>Adicione um ativo para começar.</span>
           </div>
 
-          <div v-for="(layer) in unfiledLayers" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)" @touchstart.passive="handleTouchStart($event, layer)" :data-layer-id="layer.id">
+          <div v-for="(layer) in unfiledLayers" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)" @touchstart="handleTouchStart($event, layer)" :data-layer-id="layer.id">
             <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click="store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
               <div class="layer-thumbnail">
                 <img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" />
@@ -276,11 +267,11 @@ function isLayerDraggable(layer) {
           </div>
 
           <div class="folder-section">
-            <div v-for="folder in folders" :key="`folder-${folder.id}`" class="folder-item-wrapper" @dragover.prevent @drop.stop="handleDropOnFolder($event, folder)" @touchstart.passive.stop="handleTouchStart($event, folder, true)" :data-folder-id="folder.id">
+            <div v-for="folder in folders" :key="`folder-${folder.id}`" class="folder-item-wrapper" @dragover.prevent @drop.stop="handleDropOnFolder($event, folder)" @touchstart.stop="handleTouchStart($event, folder, true)" :data-folder-id="folder.id">
                 <div class="folder-header" :class="{ 'is-locked': folder.isLocked }" @contextmenu="handleContextMenu($event, folder)" @click="folder.isOpen = !folder.isOpen">
                     <button class="folder-toggle-btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron" :class="{'is-open': folder.isOpen}"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>
-                    <input v-if="editingFolderId === folder.id" type="text" :value="folder.name" @blur="finishEditing(folder, $event)" @keydown.enter.prevent="finishEditing(folder, $event)" @keydown.esc="editingFolderId = null" @click.stop :ref="el => { if (editingFolderId === folder.id) inputRef = el }" class="folder-name-input" />
+                    <input v-if="editingFolderId === folder.id" type="text" :value="folder.name" @blur="finishEditing(folder, $event)" @keydown.enter.prevent="finishEditing(folder, $event)" @keydown.esc="editingFolderId = null" @click.stop :ref="el => { if (el) inputRef = el }" class="folder-name-input" />
                     <span v-else class="folder-name" @dblclick.stop="!folder.isLocked && startEditing(folder)">{{ folder.name }}</span>
                     <div class="folder-actions">
                         <button v-if="folder.isLocked" class="lock-icon" @click.stop="store.toggleFolderLock(folder.id)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></button>
@@ -289,7 +280,7 @@ function isLayerDraggable(layer) {
                 </div>
                 <transition name="slide-fade">
                      <div v-if="folder.isOpen" class="folder-content">
-                        <div v-for="layer in getLayersForFolder(folder.id)" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)" @touchstart.passive.stop="handleTouchStart($event, layer)" :data-layer-id="layer.id">
+                        <div v-for="layer in getLayersForFolder(folder.id)" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)" @touchstart.stop="handleTouchStart($event, layer)" :data-layer-id="layer.id">
                             <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click.stop="!folder.isLocked && store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
                                 <div class="layer-thumbnail"><img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" /></div>
                                 <span class="layer-name">{{ layer.name }}</span>
