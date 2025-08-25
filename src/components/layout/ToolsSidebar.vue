@@ -15,6 +15,22 @@ const toolsGridRef = ref(null)
 
 const activeToolDrawer = ref(null)
 const isDrawerPersistent = ref(false)
+const isZoomSliderVisible = ref(false)
+
+const workspaceZoomLevel = computed({
+  get: () => store.workspace.zoom * 100,
+  set: (val) => {
+    const newZoom = val / 100;
+    const oldZoom = store.workspace.zoom;
+    if (oldZoom === 0) return; // Avoid division by zero
+    const canvasEl = document.getElementById('mainCanvas');
+    if (!canvasEl) return;
+
+    const center = { x: canvasEl.clientWidth / 2, y: canvasEl.clientHeight / 2 };
+    const factor = newZoom / oldZoom;
+    store.zoomAtPoint(factor, center);
+  }
+})
 
 const editTools = [
   {
@@ -22,6 +38,12 @@ const editTools = [
     name: 'Mover (V)',
     icon: 'M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20',
     requiresLayer: true,
+  },
+  {
+    id: 'zoom-workspace',
+    name: 'Zoom do Workspace (Z)',
+    icon: 'M11 8v6M8 11h6M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z',
+    requiresLayer: false,
   },
   { type: 'divider' },
   {
@@ -149,11 +171,22 @@ const tools = computed(() => {
 
 
 function handleToolClick(tool, event) {
-  // --- CORREÇÃO: Lógica de clique para grupos ---
+  if (tool.id === 'zoom-workspace') {
+    isZoomSliderVisible.value = !isZoomSliderVisible.value;
+    if (isZoomSliderVisible.value) {
+        closeDrawer(true); // Pass true to keep the zoom slider open
+    }
+    return; // Stop execution here for the zoom tool
+  }
+
+  // If any other tool is clicked, close the zoom slider
+  if (isZoomSliderVisible.value) {
+      isZoomSliderVisible.value = false;
+  }
+
   if (tool.isGroup) {
     const firstChild = tool.children?.[0];
     if (firstChild) {
-      // Se a ferramenta ativa já é uma do grupo, apenas abre/fecha o drawer
       if (tool.children.some(c => c.id === store.activeTool)) {
          if (activeToolDrawer.value === tool.id) {
             closeDrawer();
@@ -162,7 +195,6 @@ function handleToolClick(tool, event) {
             isDrawerPersistent.value = true;
          }
       } else {
-        // Se for outra ferramenta, seleciona a primeira do grupo e abre o drawer
         store.setActiveTool(firstChild.id, event.currentTarget.getBoundingClientRect());
         activeToolDrawer.value = tool.id;
         isDrawerPersistent.value = true;
@@ -194,7 +226,6 @@ function handleToolClick(tool, event) {
   if (tool.id === 'upload') {
     emit('show-upload-modal');
   } else {
-    // --- CORREÇÃO: Passa a posição do botão para a store ---
     store.setActiveTool(tool.id, event.currentTarget.getBoundingClientRect())
   }
 
@@ -224,9 +255,12 @@ function handleVariationClick(variation) {
   closeDrawer()
 }
 
-function closeDrawer() {
+function closeDrawer(keepZoomSlider = false) {
   activeToolDrawer.value = null
   isDrawerPersistent.value = false
+  if (!keepZoomSlider) {
+    isZoomSliderVisible.value = false;
+  }
 }
 
 defineExpose({ closeDrawer })
@@ -262,7 +296,8 @@ function getActiveIconForGroup(group) {
             :class="{
               active:
                 store.activeTool === tool.id ||
-                (tool.isGroup && tool.children.some((c) => c.id === store.activeTool)),
+                (tool.isGroup && tool.children.some((c) => c.id === store.activeTool)) ||
+                (tool.id === 'zoom-workspace' && isZoomSliderVisible),
               disabled:
                 (tool.requiresLayer && store.layers.length === 0) ||
                 (tool.previewOnly && !store.workspace.previewIsInteractive),
@@ -326,6 +361,12 @@ function getActiveIconForGroup(group) {
                 {{ variation.name }}
               </button>
             </div>
+          </div>
+          <div v-if="tool.id === 'zoom-workspace' && isZoomSliderVisible" class="tool-drawer zoom-slider-panel">
+              <div class="zoom-control-group">
+                  <label>Zoom ({{ workspaceZoomLevel.toFixed(0) }}%)</label>
+                  <input type="range" min="2" max="1000" step="1" v-model="workspaceZoomLevel" class="slider" />
+              </div>
           </div>
         </div>
       </template>
@@ -455,5 +496,25 @@ function getActiveIconForGroup(group) {
   color: var(--c-text-tertiary);
   cursor: not-allowed;
   background-color: transparent;
+}
+
+.zoom-slider-panel {
+  padding: var(--spacing-3);
+  width: 200px;
+}
+.zoom-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  color: var(--c-text-primary);
+}
+.zoom-control-group label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-align: center;
+}
+.slider {
+  width: 100%;
+  accent-color: var(--c-primary);
 }
 </style>

@@ -264,7 +264,7 @@ function handleContextMenu(e) {
 }
 
 function handleInteractionStart(e) {
-    if (isPinching) return; // Adicionado para segurança
+    if (isPinching) return;
     if (store.workspace.isContextMenuVisible) store.showContextMenu(false);
     if (store.workspace.isSelectionContextMenuVisible) store.showSelectionContextMenu(false);
 
@@ -455,12 +455,17 @@ function handleInteractionEnd(e) {
 
 
 function handlePinchMove(e) {
-    if (!isPinching || e.touches.length < 2 || lastTouchDistance === null) return;
-    e.preventDefault();
+    if (!isPinching || e.touches.length < 2) return;
 
     const t1 = e.touches[0];
     const t2 = e.touches[1];
     const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+    if (lastTouchDistance === null) {
+        lastTouchDistance = dist;
+        return;
+    }
+
     const zoomFactor = dist / lastTouchDistance;
 
     const rect = canvasRef.value.getBoundingClientRect();
@@ -486,26 +491,30 @@ function handleMouseUp(e) {
 
 function handleTouchStart(e) {
     e.preventDefault();
+
     if (e.touches.length === 2) {
         isPinching = true;
         isPanning = false;
         isDraggingLayer = false;
+
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         lastTouchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-        return;
-    }
-    if (e.touches.length === 1 && !isPinching) {
+    } else if (e.touches.length === 1 && !isPinching) {
         handleInteractionStart(e);
     }
 }
 
-
 function handleTouchMove(e) {
     e.preventDefault();
-    if (isPinching) {
+    if (e.touches.length === 2) {
+        if (!isPinching) {
+            isPinching = true;
+            isPanning = false;
+            isDraggingLayer = false;
+        }
         handlePinchMove(e);
-    } else if (e.touches.length === 1) {
+    } else if (e.touches.length === 1 && !isPinching) {
         handleInteractionMove(e);
     }
 }
@@ -516,7 +525,9 @@ function handleTouchEnd(e) {
         isPinching = false;
         lastTouchDistance = null;
     }
-    handleInteractionEnd(e);
+    if (e.touches.length === 0) {
+        handleInteractionEnd(e);
+    }
 }
 
 function handleWheel(e) { e.preventDefault(); if (store.workspace.viewMode === 'preview') return; const zoomIntensity = 0.1; const direction = e.deltaY < 0 ? 1 : -1; const mouse = { x: e.offsetX, y: e.offsetY }; const { pan, zoom } = store.workspace; const worldX = (mouse.x - pan.x) / zoom; const worldY = (mouse.y - pan.y) / zoom; const newZoom = zoom * (1 + direction * zoomIntensity); const saneZoom = Math.max(0.02, Math.min(newZoom, 10)); const newPanX = mouse.x - worldX * saneZoom; const newPanY = mouse.y - worldY * saneZoom; store.updateWorkspace({ zoom: saneZoom, pan: { x: newPanX, y: newPanY } }); }
