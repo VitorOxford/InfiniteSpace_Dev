@@ -233,7 +233,7 @@ function getEventCoordinates(e) {
 
 function onHandleMouseDown({ event, type, cursor }) {
   event.preventDefault()
-  event.stopPropagation(); // <-- CORREÇÃO IMPORTANTE
+  event.stopPropagation();
   if (!store.selectedLayer) return
   isTransformingLayer = true
   transformType = type
@@ -265,12 +265,6 @@ function handleContextMenu(e) {
 function handleInteractionStart(e) {
     if (store.workspace.isContextMenuVisible) store.showContextMenu(false);
     if (store.workspace.isSelectionContextMenuVisible) store.showSelectionContextMenu(false);
-
-    if (e.touches && e.touches.length > 1) {
-        isPanning = false;
-        isDraggingLayer = false;
-        return;
-    }
 
     const coords = getEventCoordinates(e);
     const mouse = { x: coords.offsetX, y: coords.offsetY };
@@ -349,12 +343,6 @@ function handleInteractionStart(e) {
 
 
 function handleInteractionMove(e) {
-    if (e.touches && e.touches.length > 1) {
-        handlePinch(e);
-        return;
-    }
-    lastTouchDistance = null;
-
     const coords = getEventCoordinates(e);
     const mouse = { x: coords.clientX, y: coords.clientY };
     const canvasMouse = { x: coords.offsetX, y: coords.offsetY };
@@ -466,28 +454,35 @@ function handleInteractionEnd(e) {
     }
 }
 
-function handlePinch(e) {
-    e.preventDefault();
-    if (e.touches.length < 2) {
-        lastTouchDistance = null;
-        return;
-    };
+// --- LÓGICA DE PINÇA CORRIGIDA ---
+function handlePinchStart(e) {
+    // Cancela outras ações
+    isPanning = false;
+    isDraggingLayer = false;
+
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    lastTouchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+}
+
+function handlePinchMove(e) {
+    if (e.touches.length < 2 || lastTouchDistance === null) return;
+
     const t1 = e.touches[0];
     const t2 = e.touches[1];
     const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
 
-    if (lastTouchDistance) {
-        const rect = canvasRef.value.getBoundingClientRect();
-        const midPoint = {
-            x: ((t1.clientX + t2.clientX) / 2) - rect.left,
-            y: ((t1.clientY + t2.clientY) / 2) - rect.top
-        };
-        const zoomFactor = dist / lastTouchDistance;
-        store.zoomAtPoint(zoomFactor, midPoint);
-    }
+    const rect = canvasRef.value.getBoundingClientRect();
+    const midPoint = {
+        x: ((t1.clientX + t2.clientX) / 2) - rect.left,
+        y: ((t1.clientY + t2.clientY) / 2) - rect.top
+    };
+    const zoomFactor = dist / lastTouchDistance;
+    store.zoomAtPoint(zoomFactor, midPoint);
     lastTouchDistance = dist;
 }
 
+// --- MANIPULADORES DE EVENTO CORRIGIDOS ---
 function handleMouseDown(e) {
     if (e.button !== 0) return;
     handleInteractionStart(e);
@@ -498,18 +493,31 @@ function handleMouseMove(e) {
 function handleMouseUp(e) {
     handleInteractionEnd(e);
 }
+
 function handleTouchStart(e) {
     e.preventDefault();
-    handleInteractionStart(e);
+    if (e.touches.length === 1) {
+        handleInteractionStart(e);
+    } else if (e.touches.length === 2) {
+        handlePinchStart(e);
+    }
 }
+
 function handleTouchMove(e) {
     e.preventDefault();
-    handleInteractionMove(e);
+    if (e.touches.length === 1) {
+        handleInteractionMove(e);
+    } else if (e.touches.length === 2) {
+        handlePinchMove(e);
+    }
 }
+
 function handleTouchEnd(e) {
     e.preventDefault();
+    lastTouchDistance = null; // Reseta a distância da pinça no final
     handleInteractionEnd(e);
 }
+// ------------------------------------
 
 function handleWheel(e) { e.preventDefault(); if (store.workspace.viewMode === 'preview') return; const zoomIntensity = 0.1; const direction = e.deltaY < 0 ? 1 : -1; const mouse = { x: e.offsetX, y: e.offsetY }; const { pan, zoom } = store.workspace; const worldX = (mouse.x - pan.x) / zoom; const worldY = (mouse.y - pan.y) / zoom; const newZoom = zoom * (1 + direction * zoomIntensity); const saneZoom = Math.max(0.02, Math.min(newZoom, 10)); const newPanX = mouse.x - worldX * saneZoom; const newPanY = mouse.y - worldY * saneZoom; store.updateWorkspace({ zoom: saneZoom, pan: { x: newPanX, y: newPanY } }); }
 function screenToWorkspaceCoords(screenCoords) { const { pan, zoom } = store.workspace; return { x: (screenCoords.x - pan.x) / zoom, y: (screenCoords.y - pan.y) / zoom }; }
@@ -523,7 +531,6 @@ const adjustmentsStore = useImageAdjustmentsStore(); watch( () => [adjustmentsSt
 onMounted(initCanvas);
 onUnmounted(cleanupEventListeners);
 
-// Adiciona um watcher para redimensionar o canvas quando o wrapper muda de tamanho
 watch(() => [canvasRef.value?.parentElement?.clientWidth, canvasRef.value?.parentElement?.clientHeight], () => {
     resizeCanvas();
 });
@@ -547,7 +554,7 @@ watch(() => [canvasRef.value?.parentElement?.clientWidth, canvasRef.value?.paren
   width: 100%;
   height: 100%;
   position: relative;
-  touch-action: none; /* Essencial para controle total sobre eventos de toque */
+  touch-action: none;
 }
 
 #mainCanvas {
