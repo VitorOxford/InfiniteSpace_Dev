@@ -1,0 +1,81 @@
+/* src/assets/mobile.css */
+
+@media (max-width: 1024px) {
+    :root {
+        --sidebar-width: 0; /* Remove a largura da barra lateral no layout principal */
+        --assets-width: 0;
+    }
+
+    .workspace-layout,
+    .workspace-layout.layers-panel-hidden,
+    .workspace-layout.preview-mode {
+        grid-template-columns: 1fr;
+        grid-template-rows: var(--header-height) 40px 1fr auto;
+        grid-template-areas:
+            'header'
+            'top-menu'
+            'canvas'
+            'tools';
+    }
+
+    .tools-sidebar {
+        grid-area: tools;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        justify-content: center;
+        background-color: var(--c-surface);
+        border-top: 1px solid var(--c-border);
+        padding: var(--spacing-2);
+        box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.08);
+        transform: translateY(0);
+        z-index: 220;
+    }
+
+    .tools-grid {
+        display: flex;
+        gap: var(--spacing-3);
+    }
+
+    .tool-drawer {
+        bottom: 100%; /* Abre o drawer para cima */
+        top: auto;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-bottom: var(--spacing-2);
+    }
+
+    .layers-panel {
+        position: fixed;
+        right: var(--spacing-2);
+        top: calc(var(--header-height) + 40px + var(--spacing-2));
+        bottom: 70px;
+        width: 280px;
+        transform: translateX(110%);
+        transition: transform 0.3s ease-in-out;
+        box-shadow: var(--shadow-lg);
+        z-index: 210;
+        height: auto !important;
+    }
+
+    .workspace-layout:not(.layers-panel-hidden) .layers-panel {
+        transform: translateX(0);
+    }
+
+    .show-layers-btn {
+        display: none; /* Esconde o botão lateral, pois o painel agora é flutuante */
+    }
+}
+
+@media (max-width: 480px) {
+    .header-group.center .unit-controls,
+    .header-group.left .document-title {
+        display: none; /* Esconde elementos menos essenciais em telas muito pequenas */
+    }
+    .layers-panel {
+        width: calc(100vw - var(--spacing-4));
+    }
+}

@@ -32,6 +32,7 @@ let currentStroke = []
 let transformType = null
 let dragStartOffset = { x: 0, y: 0 }
 let lastPanPosition = { x: 0, y: 0 }
+let lastTouchDistance = null; // Para o gesto de pinça
 
 const gridStyle = computed(() => ({
   '--grid-position-x': `${store.workspace.pan.x}px`,
@@ -277,6 +278,12 @@ function handleInteractionStart(e) {
     if (store.workspace.isContextMenuVisible) store.showContextMenu(false);
     if (store.workspace.isSelectionContextMenuVisible) store.showSelectionContextMenu(false);
 
+    if (e.touches && e.touches.length > 1) {
+        isPanning = false;
+        isDraggingLayer = false;
+        return;
+    }
+
     const coords = getEventCoordinates(e);
     const mouse = { x: coords.offsetX, y: coords.offsetY };
     const worldMouse = screenToWorkspaceCoords(mouse);
@@ -295,11 +302,13 @@ function handleInteractionStart(e) {
             store.selectWithMagicWand(layerCoords, e.shiftKey);
             break;
         case 'brush':
-            if (!layerCoords) return;
+            if (!layerCoords && !store.selectedLayer) {
+                store.createDrawingLayer();
+            }
             isPainting = true;
             actionStartState = store.getClonedLayerState(store.selectedLayer);
             currentActionName = 'Pintura';
-            currentStroke = [layerCoords];
+            currentStroke = [layerCoords || worldMouse];
             store.applyPaintToLayer(currentStroke);
             break;
         case 'bucket':
@@ -313,7 +322,7 @@ function handleInteractionStart(e) {
             store.setActiveTool('brush');
             break;
         case 'eraser':
-            if (!layerCoords) return alert('Selecione uma camada para apagar.');
+             if (!layerCoords) return;
             isErasing = true;
             actionStartState = store.getClonedLayerState(store.selectedLayer);
             currentActionName = 'Apagar';
@@ -352,6 +361,10 @@ function handleInteractionStart(e) {
 
 
 function handleInteractionMove(e) {
+    if (e.touches && e.touches.length > 1) {
+        handlePinch(e);
+        return;
+    }
     const coords = getEventCoordinates(e);
     const mouse = { x: coords.clientX, y: coords.clientY };
     const canvasMouse = { x: coords.offsetX, y: coords.offsetY };
@@ -463,6 +476,24 @@ function handleInteractionEnd(e) {
     }
 }
 
+function handlePinch(e) {
+    e.preventDefault();
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+    if (lastTouchDistance) {
+        const rect = canvasRef.value.getBoundingClientRect();
+        const midPoint = {
+            x: ((t1.clientX + t2.clientX) / 2) - rect.left,
+            y: ((t1.clientY + t2.clientY) / 2) - rect.top
+        };
+        const zoomFactor = dist / lastTouchDistance;
+        store.zoomAtPoint(zoomFactor, midPoint);
+    }
+    lastTouchDistance = dist;
+}
+
 function handleMouseDown(e) {
     if (e.button !== 0) return;
     handleInteractionStart(e);
@@ -477,8 +508,13 @@ function handleMouseUp(e) {
 }
 
 function handleTouchStart(e) {
-    e.preventDefault();
-    handleInteractionStart(e);
+    if (e.touches.length === 1) {
+        e.preventDefault();
+        handleInteractionStart(e);
+    } else if (e.touches.length > 1) {
+        e.preventDefault();
+        lastTouchDistance = null;
+    }
 }
 
 function handleTouchMove(e) {
@@ -488,6 +524,7 @@ function handleTouchMove(e) {
 
 function handleTouchEnd(e) {
     e.preventDefault();
+    lastTouchDistance = null;
     handleInteractionEnd(e);
 }
 
@@ -592,6 +629,7 @@ function handleTouchEnd(e) {
   height: 100%;
   position: relative;
   background-color: var(--c-background);
+  touch-action: none; /* Previne o zoom nativo do browser no canvas */
 }
 #mainCanvas {
   position: absolute;
