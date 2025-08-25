@@ -41,7 +41,6 @@ function updateWrapperDimensions() {
     }
 }
 
-// Lógica de observação do redimensionamento refatorada
 watch(canvasWrapperRef, (newEl) => {
     if (newEl) {
         if (resizeObserver) {
@@ -49,7 +48,7 @@ watch(canvasWrapperRef, (newEl) => {
         }
         resizeObserver = new ResizeObserver(updateWrapperDimensions);
         resizeObserver.observe(newEl);
-        updateWrapperDimensions(); // Chama imediatamente ao observar
+        updateWrapperDimensions();
     } else {
         if (resizeObserver) {
             resizeObserver.disconnect();
@@ -58,8 +57,14 @@ watch(canvasWrapperRef, (newEl) => {
 });
 
 onMounted(() => {
+  // --- CORREÇÃO APLICADA AQUI ---
+  // Inicia com um canvas de desenho se não houver camadas.
+  if (store.layers.length === 0) {
+    store.initializeEmptyWorkspace();
+  }
+
   window.addEventListener('keydown', handleKeyDown);
-  updateWrapperDimensions(); // Chama na montagem inicial
+  updateWrapperDimensions();
 });
 
 onUnmounted(() => {
@@ -76,6 +81,11 @@ const artboardStyle = computed(() => ({
 }))
 
 function handleWrapperClick(event) {
+  const toolsSidebar = event.target.closest('.tools-sidebar');
+  if (toolsSidebar) {
+    return;
+  }
+
   const layersPanel = event.target.closest('.layers-panel-dropdown');
   const layersButton = event.target.closest('.layers-toggle-button');
   if (!layersPanel && !layersButton) {
@@ -122,16 +132,7 @@ function handleKeyDown(e) {
     />
 
     <main class="canvas-container">
-      <div v-if="store.layers.length === 0" class="empty-workspace-placeholder">
-        <div class="placeholder-content">
-          <img src="/logo.svg" alt="Logo" />
-          <h2>Bem-vindo ao InfiniteSpace</h2>
-          <p>Comece um novo projeto infinito =D</p>
-        </div>
-      </div>
-
-      <template v-else>
-        <div v-if="store.workspace.viewMode === 'edit'" class="edit-mode-wrapper">
+       <div v-if="store.workspace.viewMode === 'edit'" class="edit-mode-wrapper">
           <div class="canvas-layout" :class="{ 'rulers-visible': showRulers }">
               <div v-if="showRulers" class="ruler-corner"></div>
               <HorizontalRuler v-if="showRulers" :width="wrapperDimensions.width" class="ruler-h" />
@@ -157,7 +158,6 @@ function handleKeyDown(e) {
             &#9664; Detalhes e Aprovação
           </button>
         </div>
-      </template>
 
       <ToolsSidebar
         ref="toolsSidebarRef"
@@ -241,21 +241,6 @@ function handleKeyDown(e) {
   background-color: var(--c-background);
 }
 
-.empty-workspace-placeholder {
-  color: var(--c-text-tertiary);
-  text-align: center;
-}
-.placeholder-content img {
-  width: 64px;
-  height: 64px;
-  opacity: 0.5;
-  margin-bottom: var(--spacing-4);
-}
-.placeholder-content h2 {
-  font-size: 1.5rem;
-  font-weight: var(--fw-semibold);
-  color: var(--c-text-secondary);
-}
 .preview-mode-wrapper {
   width: 100%;
   height: 100%;

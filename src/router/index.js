@@ -3,22 +3,30 @@ import { createRouter, createWebHistory } from 'vue-router'
 import WorkspaceView from '@/views/WorkspaceView.vue'
 import AuthView from '@/views/AuthView.vue'
 import AccountView from '@/views/AccountView.vue'
-import HomeView from '@/views/HomeView.vue' // Esta linha causa o erro se o arquivo não existir
+import HomeView from '@/views/HomeView.vue'
 import { supabase } from '@/supabase'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      // --- CORREÇÃO APLICADA AQUI ---
+      // A rota raiz agora leva diretamente para o workspace.
       path: '/',
-      name: 'home',
-      component: HomeView,
+      name: 'workspace', // Nome da rota principal agora é 'workspace'
+      component: WorkspaceView,
       meta: { requiresAuth: true },
     },
     {
+      // Rota antiga de workspace mantida para compatibilidade, redireciona para a raiz.
       path: '/workspace',
-      name: 'workspace',
-      component: WorkspaceView,
+      redirect: '/',
+    },
+    {
+      // A HomeView pode ser mantida para um futuro dashboard
+      path: '/home',
+      name: 'home',
+      component: HomeView,
       meta: { requiresAuth: true },
     },
     {
@@ -45,7 +53,8 @@ router.beforeEach(async (to, from, next) => {
   if (requiresAuth && !session) {
     next({ name: 'auth' })
   } else if (to.name === 'auth' && session) {
-    next({ name: 'home' })
+    // Redireciona para o workspace ao invés da home
+    next({ name: 'workspace' })
   } else {
     next()
   }

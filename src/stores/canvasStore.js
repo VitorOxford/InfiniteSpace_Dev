@@ -42,7 +42,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const brush = reactive({ size: 20, opacity: 1, hardness: 0.9 });
   const eraser = reactive({ size: 40, opacity: 1 });
   const copiedSelection = ref(null);
-  const copiedFolder = ref(null); // Para copiar/colar pastas
+  const copiedFolder = ref(null);
 
   const workspace = reactive({
     pan: { x: 0, y: 0 },
@@ -86,8 +86,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     },
     isContextMenuVisible: false,
     contextMenuPosition: { x: 0, y: 0 },
-    contextMenuTargetId: null, // ID genérico para camada ou pasta
-    contextMenuIsFolder: false, // Flag para diferenciar
+    contextMenuTargetId: null,
+    contextMenuIsFolder: false,
     isSelectionContextMenuVisible: false,
     selectionContextMenuPosition: { x: 0, y: 0 },
     isResizeModalVisible: false,
@@ -120,6 +120,19 @@ export const useCanvasStore = defineStore('canvas', () => {
       y: 0,
     }
   })
+
+  // --- FUNÇÃO ADICIONADA AQUI ---
+  function initializeEmptyWorkspace() {
+    if (layers.value.length === 0) {
+      createBlankCanvas({
+        name: 'Fundo',
+        width: 1920,
+        height: 1080,
+        unit: 'px',
+        dpi: 72,
+      });
+    }
+  }
 
   function zoomAtPoint(factor, point) {
       const { pan, zoom } = workspace;
@@ -340,7 +353,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       layerHistoryStore.addLayerState(newLayer.id, getClonedLayerState(newLayer), 'Criação da Camada');
       globalHistoryStore.addState(getClonedGlobalState(), `Adicionar Camada: ${newLayer.name}`);
       selectLayer(newLayer.id);
-      if (!initialPosition) frameLayer(newLayer.id);
+      frameLayer(newLayer.id);
   }
 
   function setActiveTool(tool) {
@@ -522,22 +535,33 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
     function showContextMenu(visible, position = { x: 0, y: 0 }, targetId = null, isFolder = false) {
-      const menuWidth = 260;
-      const menuHeight = 400; // Estimativa
-      const { innerWidth, innerHeight } = window;
+      if (visible) {
+        const menuWidth = 260;
+        const menuHeight = isFolder ? 220 : 450;
+        const margin = 10;
 
-      let x = position.x;
-      let y = position.y;
+        const { innerWidth, innerHeight } = window;
 
-      if (x + menuWidth > innerWidth) x = innerWidth - menuWidth - 5;
-      if (y + menuHeight > innerHeight) y = innerHeight - menuHeight - 5;
+        let x = position.x;
+        let y = position.y;
 
+        if (x + menuWidth > innerWidth) {
+          x = innerWidth - menuWidth - margin;
+        }
+        if (y + menuHeight > innerHeight) {
+          y = innerHeight - menuHeight - margin;
+        }
+        if (x < 0) x = margin;
+        if (y < 0) y = margin;
+
+        workspace.contextMenuPosition = { x, y };
+        workspace.contextMenuTargetId = targetId;
+        workspace.contextMenuIsFolder = isFolder;
+        if (targetId && !isFolder) {
+          selectLayer(targetId);
+        }
+      }
       workspace.isContextMenuVisible = visible;
-      workspace.contextMenuPosition = { x, y };
-      workspace.contextMenuTargetId = targetId;
-      workspace.contextMenuIsFolder = isFolder;
-
-      if (visible && targetId && !isFolder) selectLayer(targetId);
     }
     function showSelectionContextMenu(visible, position = { x: 0, y: 0 }) { workspace.isSelectionContextMenuVisible = visible; workspace.selectionContextMenuPosition = position; }
     function showResizeModal(visible) { workspace.isResizeModalVisible = visible; }
@@ -618,7 +642,6 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     if (!topLayer.image || !bottomLayer.image) return;
 
-    // Assegura que temos um canvas para trabalhar, convertendo de ImageBitmap se necessário
     const getCanvasFromImage = (image) => {
         if (image instanceof HTMLCanvasElement) return image;
         const canvas = document.createElement('canvas');
@@ -656,7 +679,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     tempCanvas.height = newHeight;
     const tempCtx = tempCanvas.getContext('2d');
 
-    // Desenha a camada de baixo
     tempCtx.save();
     tempCtx.translate(bottomLayer.x - minX, bottomLayer.y - minY);
     tempCtx.rotate(bottomLayer.rotation);
@@ -664,7 +686,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     tempCtx.drawImage(bottomCanvas, -bottomLayer.metadata.originalWidth / 2, -bottomLayer.metadata.originalHeight / 2);
     tempCtx.restore();
 
-    // Desenha a camada de cima
     tempCtx.save();
     tempCtx.globalAlpha = topLayer.opacity;
     tempCtx.translate(topLayer.x - minX, topLayer.y - minY);
@@ -673,7 +694,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     tempCtx.drawImage(topCanvas, -topLayer.metadata.originalWidth / 2, -topLayer.metadata.originalHeight / 2);
     tempCtx.restore();
 
-    // Atualiza a camada de baixo com a imagem mesclada
     bottomLayer.image = tempCanvas;
     bottomLayer.metadata.originalWidth = newWidth;
     bottomLayer.metadata.originalHeight = newHeight;
@@ -682,7 +702,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     bottomLayer.scale = 1;
     bottomLayer.rotation = 0;
 
-    // Recria os proxies para corrigir o bug de arrastar
     bottomLayer.fullResImage = await createImageBitmap(tempCanvas);
     const LOW_RES_PROXY_SIZE = 1000;
     const lowResRatio = Math.min(LOW_RES_PROXY_SIZE / newWidth, LOW_RES_PROXY_SIZE / newHeight, 1);
@@ -691,7 +710,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         resizeHeight: Math.round(newHeight * lowResRatio),
         resizeQuality: 'low',
     });
-    bottomLayer.image = bottomLayer.fullResImage; // Usa a imagem de alta resolução para exibição
+    bottomLayer.image = bottomLayer.fullResImage;
 
     bottomLayer.version++;
     layerHistoryStore.addLayerState(bottomLayer.id, originalBottomState, 'Mesclar Camada');
@@ -797,14 +816,12 @@ export const useCanvasStore = defineStore('canvas', () => {
     selectedLayerId.value = null;
     globalHistoryStore.clearHistory();
 
-    // Redefine o estado do workspace para um novo projeto
     Object.assign(workspace, {
         pan: { x: 0, y: 0 },
         zoom: 1,
         viewMode: 'edit',
-        rulers: { visible: true, unit: 'cm' }, // <-- ADICIONE ESTA LINHA CORRIGIDA
+        rulers: { visible: true, unit: 'cm' },
         grid: { visible: true },
-        // ... (redefina outras propriedades do workspace se necessário)
     });
 
 
@@ -821,7 +838,6 @@ export const useCanvasStore = defineStore('canvas', () => {
       heightInPx = Math.round(height * pxPerIn);
     }
 
-    // CORREÇÃO: Garante que as dimensões do documento sejam atualizadas
     workspace.document.width = widthInPx;
     workspace.document.height = heightInPx;
 
@@ -910,7 +926,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     const folderIndex = folders.value.findIndex(f => f.id === folderId);
     if (folderIndex > -1) {
       const folder = folders.value[folderIndex];
-      // Move as layers de volta para a raiz
       folder.layerIds.forEach(layerId => {
         const layer = layers.value.find(l => l.id === layerId);
         if (layer) layer.folderId = null;
@@ -930,7 +945,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   function toggleFolderVisibility(folderId) {
     const folder = folders.value.find(f => f.id === folderId);
     if (folder) {
-        // Verifica se a maioria das camadas está visível para decidir se deve ocultar ou mostrar
         const visibleLayers = folder.layerIds.map(id => layers.value.find(l => l.id === id)).filter(l => l && l.visible);
         const shouldBeVisible = visibleLayers.length < folder.layerIds.length / 2;
         folder.layerIds.forEach(layerId => {
@@ -944,7 +958,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     const layer = layers.value.find(l => l.id === layerId);
     if (!layer) return;
 
-    // Remove da pasta antiga, se houver
     if (layer.folderId) {
         const oldFolder = folders.value.find(f => f.id === layer.folderId);
         if (oldFolder) {
@@ -954,7 +967,6 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     layer.folderId = folderId;
 
-    // Adiciona à nova pasta, se houver
     if (folderId) {
         const targetFolder = folders.value.find(f => f.id === folderId);
         if (targetFolder && !targetFolder.layerIds.includes(layerId)) {
@@ -971,14 +983,11 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     const newFolder = createFolder(`${sourceFolder.name} Cópia`);
 
-    // Duplica as camadas na ordem correta
     const layersToDuplicate = sourceFolder.layerIds.map(id => layers.value.find(l => l.id === id)).filter(Boolean);
 
     layersToDuplicate.forEach(layer => {
-        // A função duplicateLayer já adiciona a nova camada ao array principal 'layers'
         const newLayer = duplicateLayer(layer.id);
         if (newLayer) {
-            // Apenas atualiza a folderId da camada recém-criada
             moveLayerToFolder(newLayer.id, newFolder.id);
         }
     });
@@ -1015,9 +1024,11 @@ function createDrawingLayer() {
     getClonedLayerState, commitLayerStateToHistory,
     setTransformingState,
     togglePanel, updatePanelState, getPanelState,
-    zoomIn, zoomOut, zoomToFit,
+    zoomIn, zoomOut, zoomToFit, zoomAtPoint,
     createBlankCanvas,
     exportLayer,
+    // --- FUNÇÃO EXPORTADA AQUI ---
+    initializeEmptyWorkspace,
     // Funções de Pastas
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
   }

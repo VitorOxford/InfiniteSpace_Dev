@@ -26,7 +26,7 @@ let isDrawingSelection = false
 let isPainting = false
 let isErasing = false
 let isWandSelecting = false;
-let isPinching = false; // Flag para controlar o estado de pinça
+let isPinching = false;
 let currentStroke = []
 let transformType = null
 let dragStartOffset = { x: 0, y: 0 }
@@ -186,6 +186,7 @@ function setupEventListeners() {
   document.addEventListener('mouseup', handleMouseUp)
   document.addEventListener('mouseleave', handleMouseUp)
 
+  // --- CORREÇÃO APLICADA AQUI ---
   canvas.addEventListener('touchstart', handleTouchStart, { passive: false })
   canvas.addEventListener('touchmove', handleTouchMove, { passive: false })
   canvas.addEventListener('touchend', handleTouchEnd)

@@ -36,38 +36,38 @@ const editTools = [
   {
     id: 'move',
     name: 'Mover (V)',
-    icon: 'M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20',
+    icon: 'M10 4H4v6M20 14h-6v6M14 10l7-7-7 7M4 20l7-7-7 7',
     requiresLayer: true,
   },
   {
     id: 'zoom-workspace',
     name: 'Zoom do Workspace (Z)',
-    icon: 'M11 8v6M8 11h6M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z',
+    icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
     requiresLayer: false,
   },
   { type: 'divider' },
   {
     id: 'paint-group',
     name: 'Ferramentas de Pintura',
-    icon: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z',
+    icon: 'M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
     isGroup: true,
     children: [
        {
         id: 'brush',
         name: 'Pincel (B)',
-        icon: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z',
+        icon: 'M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
         requiresLayer: true,
       },
       {
         id: 'bucket',
         name: 'Lata de Tinta (G)',
-        icon: 'm19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z M5 2l5 5 M22 9l-8.5 20.5 m-2.5-12 3-3',
+        icon: 'M19 11l-8-8-8.6 8.6a2 2 0 000 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11z',
         requiresLayer: true,
       },
       {
         id: 'eyedropper',
         name: 'Conta-gotas (I)',
-        icon: 'm13 2-9 9 4 4 9-9-4-4Z M4 13l8 8',
+        icon: 'M13 2l-9 9 4 4 9-9-4-4zM4 13l8 8',
         requiresLayer: true,
       }
     ],
@@ -75,7 +75,7 @@ const editTools = [
   {
     id: 'eraser',
     name: 'Borracha (E)',
-    icon: 'M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2Z M10 12H4M10 16H4M14 12h6M14 16h6',
+    icon: 'M20 20H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v12a2 2 0 01-2 2zM18 12H6',
     requiresLayer: true,
   },
   {
@@ -87,7 +87,7 @@ const editTools = [
   {
     id: 'lasso-group',
     name: 'Ferramentas de Laço',
-    icon: 'M13.25 2.19a3.78 3.78 0 0 0-4.5 0l-6 4A3.78 3.78 0 0 0 1 9.47v5.06a3.78 3.78 0 0 0 1.75 3.28l6 4a3.78 3.78 0 0 0 4.5 0l6-4a3.78 3.78 0 0 0 1.75-3.28V9.47a3.78 3.78 0 0 0-1.75-3.28l-6-4Z',
+    icon: 'M3 8l6-5 6 5v8l-6 5-6-5z',
     isGroup: true,
     children: [
       {
@@ -99,7 +99,7 @@ const editTools = [
       {
         id: 'lasso-select',
         name: 'Laço Poligonal (L)',
-        icon: 'M13.25 2.19a3.78 3.78 0 0 0-4.5 0l-6 4A3.78 3.78 0 0 0 1 9.47v5.06a3.78 3.78 0 0 0 1.75 3.28l6 4a3.78 3.78 0 0 0 4.5 0l6-4a3.78 3.78 0 0 0 1.75-3.28V9.47a3.78 3.78 0 0 0-1.75-3.28l-6-4Z',
+        icon: 'M3 8l6-5 6 5v8l-6 5-6-5z',
         requiresLayer: true,
       },
     ],
@@ -112,7 +112,7 @@ const editTools = [
   {
     id: 'upload',
     name: 'Carregar Ficheiro',
-    icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
+    icon: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
     requiresLayer: false,
   },
 ]
@@ -123,14 +123,14 @@ const previewTools = computed(() => [
     name: store.workspace.previewIsInteractive ? 'Bloquear Edição' : 'Editar Estampa',
     icon: store.workspace.previewIsInteractive
       ? 'M7 7H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M15 5l-2-2m0 0L8 8m5-5l5 5'
-      : 'M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z',
+      : 'M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z',
     requiresLayer: false,
   },
   { type: 'divider' },
   {
     id: 'zoom-preview',
     name: 'Zoom do Preview',
-    icon: 'M15 4h5v5M9 20H4v-5M20 9l-7 7-7-7',
+    icon: 'M15 3h6v6M9 21H3v-6M21 3l-7 7-7-7M3 21l7-7',
     requiresLayer: false,
     previewOnly: false,
   },
@@ -138,28 +138,28 @@ const previewTools = computed(() => [
   {
     id: 'move',
     name: 'Mover Estampa (V)',
-    icon: 'M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20',
+    icon: 'M10 4H4v6M20 14h-6v6M14 10l7-7-7 7M4 20l7-7-7 7',
     requiresLayer: true,
     previewOnly: true,
   },
   {
     id: 'zoom',
     name: 'Zoom Estampa (Z)',
-    icon: 'M11 8v6M8 11h6M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z',
+    icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
     requiresLayer: true,
     previewOnly: true,
   },
   {
     id: 'rotate',
     name: 'Girar Estampa (R)',
-    icon: 'M2.5 22v-6h6M21.5 2v6h-6M15.52 6.48a9 9 0 00-12.04 0M2.5 12.5a9 9 0 0019.04-2.5',
+    icon: 'M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L20.49 2M3.51 22a9 9 0 0114.85-3.36L20.49 15',
     requiresLayer: true,
     previewOnly: true,
   },
   {
     id: 'lasso-select',
     name: 'Laço (L)',
-    icon: 'M13.25 2.19a3.78 3.78 0 0 0-4.5 0l-6 4A3.78 3.78 0 0 0 1 9.47v5.06a3.78 3.78 0 0 0 1.75 3.28l6 4a3.78 3.78 0 0 0 4.5 0l6-4a3.78 3.78 0 0 0 1.75-3.28V9.47a3.78 3.78 0 0 0-1.75-3.28l-6-4Z',
+    icon: 'M3 8l6-5 6 5v8l-6 5-6-5z',
     requiresLayer: true,
     previewOnly: true,
   },
@@ -365,7 +365,7 @@ function getActiveIconForGroup(group) {
           <div v-if="tool.id === 'zoom-workspace' && isZoomSliderVisible" class="tool-drawer zoom-slider-panel">
               <div class="zoom-control-group">
                   <label>Zoom ({{ workspaceZoomLevel.toFixed(0) }}%)</label>
-                  <input type="range" min="2" max="1000" step="1" v-model="workspaceZoomLevel" class="slider" />
+                  <input type="range" min="10" max="1000" step="1" v-model="workspaceZoomLevel" class="slider" />
               </div>
           </div>
         </div>
