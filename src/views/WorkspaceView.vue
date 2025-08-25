@@ -126,7 +126,7 @@ function handleKeyDown(e) {
         <div class="placeholder-content">
           <img src="/logo.svg" alt="Logo" />
           <h2>Bem-vindo ao InfiniteSpace</h2>
-          <p>Comece um novo projeto infinito =)</p>
+          <p>Comece um novo projeto infinito =D</p>
         </div>
       </div>
 

@@ -264,6 +264,7 @@ function handleContextMenu(e) {
 }
 
 function handleInteractionStart(e) {
+    if (isPinching) return; // Adicionado para segurança
     if (store.workspace.isContextMenuVisible) store.showContextMenu(false);
     if (store.workspace.isSelectionContextMenuVisible) store.showSelectionContextMenu(false);
 
@@ -487,15 +488,18 @@ function handleTouchStart(e) {
     e.preventDefault();
     if (e.touches.length === 2) {
         isPinching = true;
-        isPanning = false; // Garante que o pan não aconteça
+        isPanning = false;
         isDraggingLayer = false;
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         lastTouchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-    } else if (e.touches.length === 1 && !isPinching) {
+        return;
+    }
+    if (e.touches.length === 1 && !isPinching) {
         handleInteractionStart(e);
     }
 }
+
 
 function handleTouchMove(e) {
     e.preventDefault();
