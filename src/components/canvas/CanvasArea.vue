@@ -7,6 +7,11 @@ import VerticalRuler from './VerticalRuler.vue'
 import SelectionOverlay from './SelectionOverlay.vue'
 import BoundingBox from './BoundingBox.vue'
 
+// --- CORREÇÃO: Recebe a prop para saber se está no layout móvel ---
+const props = defineProps({
+  isMobile: Boolean,
+})
+
 const store = useCanvasStore()
 const canvasRef = ref(null)
 const wrapperRef = ref(null)
@@ -39,6 +44,11 @@ const gridStyle = computed(() => ({
   '--grid-position-y': `${store.workspace.pan.y}px`,
   '--grid-size': `${50 * store.workspace.zoom}px`,
 }))
+
+// --- CORREÇÃO: Visibilidade das réguas agora considera a prop 'isMobile' ---
+const showRulers = computed(() => {
+  return store.workspace.viewMode === 'edit' && store.workspace.rulers.visible && !props.isMobile
+})
 
 function renderCanvas() {
   if (!ctx) return
@@ -155,8 +165,6 @@ function renderPreviewMode(canvas) {
     (canvas.width * padding) / offscreenCanvas.width,
     (canvas.height * padding) / offscreenCanvas.height,
   )
-
-  store.updateWorkspace({ previewRenderScale: finalScale })
 
   const finalWidth = offscreenCanvas.width * finalScale
   const finalHeight = offscreenCanvas.height * finalScale
@@ -585,8 +593,8 @@ function handleTouchEnd(e) {
 </script>
 
 <template>
-  <div class="canvas-layout" :class="{ 'preview-mode': store.workspace.viewMode === 'preview' }">
-    <template v-if="store.workspace.viewMode === 'edit' && store.workspace.rulers.visible">
+  <div class="canvas-layout" :class="{ 'is-mobile': props.isMobile, 'preview-mode': store.workspace.viewMode === 'preview' }">
+    <template v-if="showRulers">
       <div class="ruler-corner"></div>
       <HorizontalRuler :width="wrapperDimensions.width" />
       <VerticalRuler :height="wrapperDimensions.height" />
@@ -604,36 +612,14 @@ function handleTouchEnd(e) {
   </div>
 </template>
 <style scoped>
+/* --- CORREÇÃO: Layout CSS unificado e condicional --- */
 .canvas-layout {
   display: grid;
   width: 100%;
   height: 100%;
+  /* Layout padrão para Desktop (com réguas) */
   grid-template-columns: 30px 1fr;
   grid-template-rows: 30px 1fr;
-}
-.canvas-layout.preview-mode {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-}
-.canvas-layout.preview-mode .canvas-area-wrapper {
-  grid-area: 1 / 1 / 2 / 2;
-}
-.ruler-corner,
-.horizontal-ruler,
-.vertical-ruler {
-  z-index: 60;
-  display: none; /* Escondido por padrão, mostrado no desktop */
-}
-@media(min-width: 1025px) {
-  .ruler-corner, .horizontal-ruler, .vertical-ruler {
-    display: block;
-  }
-}
-.ruler-corner {
-  grid-area: 1 / 1 / 2 / 2;
-  background-color: var(--c-surface);
-  border-bottom: 1px solid var(--c-border);
-  border-right: 1px solid var(--c-border);
 }
 .canvas-area-wrapper {
   grid-area: 2 / 2 / 3 / 3;
@@ -641,8 +627,34 @@ function handleTouchEnd(e) {
   height: 100%;
   position: relative;
   background-color: var(--c-background);
-  touch-action: none; /* Previne o zoom nativo do browser no canvas */
+  touch-action: none;
 }
+
+/* Layout para o modo de preview (sem réguas) */
+.canvas-layout.preview-mode {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.canvas-layout.preview-mode .canvas-area-wrapper {
+  grid-area: 1 / 1 / 2 / 2;
+}
+
+/* Layout para dispositivos móveis (sem réguas) */
+.canvas-layout.is-mobile {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.canvas-layout.is-mobile .canvas-area-wrapper {
+  grid-area: 1 / 1 / 2 / 2;
+}
+
+.ruler-corner {
+  grid-area: 1 / 1 / 2 / 2;
+  background-color: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  border-right: 1px solid var(--c-border);
+}
+
 #mainCanvas {
   position: absolute;
   top: 0;
@@ -661,15 +673,5 @@ function handleTouchEnd(e) {
   background-position: var(--grid-position-x) var(--grid-position-y);
   pointer-events: none;
   opacity: 0.5;
-}
-
-@media (max-width: 1024px) {
-  .canvas-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
-  }
-  .canvas-area-wrapper {
-    grid-area: 1 / 1 / 2 / 2;
-  }
 }
 </style>

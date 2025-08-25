@@ -30,13 +30,40 @@ const isNewProjectModalVisible = ref(false)
 const isLayersPanelVisible = ref(true);
 
 
+const isMobileLayout = ref(false)
+let isMobileUserAgent = false
+
+function checkLayoutMode() {
+  const isNowMobile = isMobileUserAgent || window.innerWidth <= 1024;
+  if (isNowMobile !== isMobileLayout.value) {
+    isMobileLayout.value = isNowMobile;
+  }
+}
+
+onMounted(() => {
+  isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  checkLayoutMode();
+  window.addEventListener('resize', checkLayoutMode);
+
+  if (isMobileLayout.value) {
+    isLayersPanelVisible.value = false;
+  }
+  window.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkLayoutMode);
+  window.removeEventListener('keydown', handleKeyDown);
+});
+
+
 const artboardStyle = computed(() => ({
   transform: `scale(${store.workspace.previewZoom})`,
   transformOrigin: 'center center',
 }))
 
 function handleWrapperClick(event) {
-  if (window.innerWidth <= 1024) {
+  if (isMobileLayout.value) {
     const layersPanel = event.target.closest('.layers-panel');
     const headerButton = event.target.closest('.mobile-layers-btn');
     if (!layersPanel && !headerButton && isLayersPanelVisible.value) {
@@ -78,20 +105,13 @@ function handleKeyDown(e) {
     store.zoomToFit();
   }
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
-});
 </script>
 
 <template>
   <div
     class="workspace-layout"
     :class="{
+      'is-mobile': isMobileLayout,
       'preview-mode': store.workspace.viewMode === 'preview',
       'layers-panel-hidden': !isLayersPanelVisible,
       'layers-panel-visible': isLayersPanelVisible
@@ -118,7 +138,7 @@ onUnmounted(() => {
 
       <template v-else>
         <div v-if="store.workspace.viewMode === 'edit'" class="edit-mode-wrapper">
-          <CanvasArea>
+          <CanvasArea :is-mobile="isMobileLayout">
             <LassoOverlay />
           </CanvasArea>
         </div>
@@ -126,7 +146,7 @@ onUnmounted(() => {
         <div v-else class="preview-mode-wrapper">
           <div class="artboard-viewport">
             <div class="artboard" :style="artboardStyle">
-              <CanvasArea>
+               <CanvasArea :is-mobile="isMobileLayout">
                 <LassoOverlay />
               </CanvasArea>
               <DimensionLines />

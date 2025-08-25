@@ -10,13 +10,12 @@ const props = defineProps({
 })
 
 const store = useCanvasStore()
-const emit = defineEmits(['show-controls', 'show-upload-modal']) // <-- CORREÇÃO: Adicionado o novo emit
+const emit = defineEmits(['show-controls', 'show-upload-modal'])
 const toolsGridRef = ref(null)
 
 const activeToolDrawer = ref(null)
 const isDrawerPersistent = ref(false)
 
-// ... (seu array 'editTools' e 'previewTools' permanecem os mesmos)
 const editTools = [
   {
     id: 'move',
@@ -25,7 +24,6 @@ const editTools = [
     requiresLayer: true,
   },
   { type: 'divider' },
-  // MODIFICADO: Agrupado ferramentas de pintura
   {
     id: 'paint-group',
     name: 'Ferramentas de Pintura',
@@ -150,15 +148,27 @@ const tools = computed(() => {
 })
 
 
-function handleToolClick(tool) {
+function handleToolClick(tool, event) {
+  // --- CORREÇÃO: Lógica de clique para grupos ---
   if (tool.isGroup) {
-    if (activeToolDrawer.value === tool.id && isDrawerPersistent.value) {
-      closeDrawer()
-    } else {
-      activeToolDrawer.value = tool.id
-      isDrawerPersistent.value = true
+    const firstChild = tool.children?.[0];
+    if (firstChild) {
+      // Se a ferramenta ativa já é uma do grupo, apenas abre/fecha o drawer
+      if (tool.children.some(c => c.id === store.activeTool)) {
+         if (activeToolDrawer.value === tool.id) {
+            closeDrawer();
+         } else {
+            activeToolDrawer.value = tool.id;
+            isDrawerPersistent.value = true;
+         }
+      } else {
+        // Se for outra ferramenta, seleciona a primeira do grupo e abre o drawer
+        store.setActiveTool(firstChild.id, event.currentTarget.getBoundingClientRect());
+        activeToolDrawer.value = tool.id;
+        isDrawerPersistent.value = true;
+      }
     }
-    return
+    return;
   }
 
   if (tool.id === 'toggle-interactive') {
@@ -181,11 +191,11 @@ function handleToolClick(tool) {
     else return
   }
 
-  // --- CORREÇÃO: Emite um evento em vez de controlar o modal diretamente ---
   if (tool.id === 'upload') {
     emit('show-upload-modal');
   } else {
-    store.setActiveTool(tool.id)
+    // --- CORREÇÃO: Passa a posição do botão para a store ---
+    store.setActiveTool(tool.id, event.currentTarget.getBoundingClientRect())
   }
 
   if (activeToolDrawer.value) {
@@ -193,7 +203,6 @@ function handleToolClick(tool) {
   }
 }
 
-// ... (resto do seu script, como handleMouseEnter, handleMouseLeave, etc. permanecem os mesmos)
 function handleMouseEnter(tool) {
   if (tool.isGroup && !isDrawerPersistent.value) {
     activeToolDrawer.value = tool.id
@@ -258,7 +267,7 @@ function getActiveIconForGroup(group) {
                 (tool.requiresLayer && store.layers.length === 0) ||
                 (tool.previewOnly && !store.workspace.previewIsInteractive),
             }"
-            @click="handleToolClick(tool)"
+            @click="handleToolClick(tool, $event)"
             :data-tooltip="tool.name"
             :data-tool-id="tool.id"
           >
@@ -286,7 +295,7 @@ function getActiveIconForGroup(group) {
                   active: store.activeTool === child.id,
                   disabled: child.requiresLayer && !store.selectedLayer,
                 }"
-                @click="handleToolClick(child)"
+                @click="handleToolClick(child, $event)"
                 :data-tooltip="child.name"
                 :data-tool-id="child.id"
               >
@@ -325,21 +334,28 @@ function getActiveIconForGroup(group) {
 </template>
 
 <style scoped>
-/* Seus estilos existentes ... */
+/* Estilos permanecem os mesmos da correção anterior */
 .tools-sidebar {
-  width: var(--sidebar-width);
-  background-color: var(--c-surface);
-  border-right: 1px solid var(--c-border);
-  padding: var(--spacing-2) 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  grid-area: tools;
   z-index: 210;
 }
+@media (min-width: 1025px) {
+    .tools-sidebar {
+        width: var(--sidebar-width);
+        background-color: var(--c-surface);
+        border-right: 1px solid var(--c-border);
+        padding: var(--spacing-2) 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
 .tools-grid {
   display: grid;
   gap: var(--spacing-1);
 }
+
 .tool-wrapper {
   position: relative;
 }
@@ -398,8 +414,6 @@ function getActiveIconForGroup(group) {
 
 .tool-drawer {
   position: absolute;
-  left: 100%;
-  top: 0;
   background-color: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
@@ -409,6 +423,13 @@ function getActiveIconForGroup(group) {
   flex-direction: column;
   z-index: 211;
 }
+@media (min-width: 1025px) {
+    .tool-drawer {
+        left: 100%;
+        top: 0;
+    }
+}
+
 .drawer-section {
   display: flex;
   flex-direction: column;

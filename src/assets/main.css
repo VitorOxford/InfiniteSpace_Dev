@@ -39,6 +39,8 @@
   --header-height: 56px;
   --sidebar-width: 60px;
   --assets-width: 300px;
+  /* --- CORREÇÃO: Variável para a altura da barra de ferramentas móvel --- */
+  --mobile-toolbar-height: 64px;
 }
 
 *, *::before, *::after {
@@ -95,7 +97,6 @@ button {
     'tools  canvas';
 }
 
-/* Mapeia os componentes para as áreas da grid */
 .app-header { grid-area: header; }
 .top-menu-bar { grid-area: top-menu; }
 .tools-sidebar { grid-area: tools; }
@@ -105,6 +106,7 @@ button {
 .tools-sidebar,
 .canvas-container,
 .layers-panel {
+  /* No desktop, a altura é calculada */
   height: calc(100vh - var(--header-height) - 40px);
 }
 
@@ -118,66 +120,86 @@ button {
 /* ----------------------------------------- */
 /* --- RESPONSIVIDADE (MOBILE) --- */
 /* ----------------------------------------- */
-@media (max-width: 1024px) {
-  .workspace-layout {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: var(--header-height) 40px 1fr;
-    grid-template-areas:
-      'header'
-      'top-menu'
-      'canvas' !important;
-  }
+.workspace-layout.is-mobile {
+  grid-template-columns: 1fr !important;
+  /* --- CORREÇÃO: Define uma linha no grid para a barra de ferramentas --- */
+  grid-template-rows: var(--header-height) 40px 1fr var(--mobile-toolbar-height);
+  grid-template-areas:
+    'header'
+    'top-menu'
+    'canvas'
+    'tools' !important; /* A barra de ferramentas agora tem a sua própria área */
+}
 
-  .tools-sidebar {
-    grid-area: unset !important;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: auto;
-    flex-direction: row;
-    justify-content: center;
-    background-color: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-top: 1px solid var(--c-border);
-    padding: var(--spacing-2);
-    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.08);
-    z-index: 220;
-  }
+.workspace-layout.is-mobile .tools-sidebar {
+  grid-area: tools !important; /* Atribui a área correta do grid */
+  /* --- CORREÇÃO: Remove position:fixed e ajusta para o layout de grid --- */
+  position: relative;
+  bottom: unset;
+  left: unset;
+  width: 100%;
+  height: 100%; /* Ocupa a altura da sua linha no grid */
+  flex-direction: row;
+  justify-content: center;
+  align-items: center; /* Centraliza os ícones verticalmente */
+  background-color: var(--c-surface); /* Fundo sólido para evitar transparência indesejada */
+  border-top: 1px solid var(--c-border);
+  padding: 0 var(--spacing-2); /* Ajusta o padding */
+  box-shadow: none; /* Remove a sombra desnecessária no layout de grid */
+  z-index: 220;
+}
 
-  .tools-grid {
+/* --- CORREÇÃO: Garante que a altura dos containers se ajusta ao novo grid --- */
+.workspace-layout.is-mobile .canvas-container,
+.workspace-layout.is-mobile .layers-panel {
+  height: 100%; /* Faz com que ocupem 100% da altura da sua área no grid */
+}
+
+.workspace-layout.is-mobile .tools-grid {
+  display: flex;
+  gap: var(--spacing-3);
+}
+
+.workspace-layout.is-mobile .tool-drawer {
+  bottom: calc(100% + 8px);
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.workspace-layout.is-mobile .layers-panel {
+  grid-area: unset !important;
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  max-width: 85vw;
+  height: 100vh !important;
+  transform: translateX(100%);
+  transition: transform 0.3s ease-in-out;
+  box-shadow: var(--shadow-lg);
+  z-index: 250;
+}
+
+.workspace-layout.is-mobile.layers-panel-visible .layers-panel {
+  transform: translateX(0);
+}
+
+.workspace-layout.is-mobile .show-layers-btn {
+  display: none !important;
+}
+
+.workspace-layout .mobile-layers-btn {
+    display: none;
+}
+.workspace-layout.is-mobile .mobile-layers-btn {
     display: flex;
-    gap: var(--spacing-3);
-  }
-
-  .tool-drawer {
-    bottom: calc(100% + 8px);
-    top: auto;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  .layers-panel {
-    grid-area: unset !important;
-    position: fixed;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 300px;
-    max-width: 85vw;
-    height: 100vh !important;
-    transform: translateX(100%);
-    transition: transform 0.3s ease-in-out;
-    box-shadow: var(--shadow-lg);
-    z-index: 250;
-  }
-
-  .workspace-layout.layers-panel-visible .layers-panel {
-    transform: translateX(0);
-  }
-
-  .show-layers-btn {
-    display: none !important;
-  }
+}
+.workspace-layout.is-mobile .user-actions,
+.workspace-layout.is-mobile .btn-secondary,
+.workspace-layout.is-mobile .document-title,
+.workspace-layout.is-mobile .divider,
+.workspace-layout.is-mobile .unit-controls {
+    display: none;
 }
