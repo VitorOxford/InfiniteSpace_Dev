@@ -37,10 +37,7 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
   --transition-fast: all 0.15s ease-in-out;
   --header-height: 56px;
-  --sidebar-width: 60px;
-  --assets-width: 300px;
-  /* --- CORREÇÃO: Variável para a altura da barra de ferramentas móvel --- */
-  --mobile-toolbar-height: 64px;
+  --top-menu-bar-height: 40px;
 }
 
 *, *::before, *::after {
@@ -60,7 +57,7 @@ html {
 
 body {
   font-size: var(--fs-sm);
-  overflow: hidden;
+  overflow: hidden; /* Mantém o overflow hidden para o layout da aplicação */
 }
 
 button {
@@ -71,7 +68,7 @@ button {
 }
 
 /* ----------------------------------------- */
-/* --- LAYOUT PRINCIPAL (DESKTOP) --- */
+/* --- LAYOUT DO WORKSPACE SIMPLIFICADO --- */
 /* ----------------------------------------- */
 
 .workspace-layout {
@@ -79,127 +76,15 @@ button {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  grid-template-columns: var(--sidebar-width) 1fr var(--assets-width);
-  grid-template-rows: var(--header-height) 40px 1fr;
+  /* Grid simplificado: apenas a barra de menu superior e o canvas */
+  grid-template-rows: var(--top-menu-bar-height) 1fr;
   grid-template-areas:
-    'header header header'
-    'top-menu top-menu top-menu'
-    'tools  canvas layers';
-  position: relative;
-  transition: grid-template-columns 0.3s ease-in-out;
-}
-
-.workspace-layout.preview-mode {
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-areas:
-    'header header'
-    'top-menu top-menu'
-    'tools  canvas';
-}
-
-.app-header { grid-area: header; }
-.top-menu-bar { grid-area: top-menu; }
-.tools-sidebar { grid-area: tools; }
-.canvas-container { grid-area: canvas; }
-.layers-panel { grid-area: layers; }
-
-.tools-sidebar,
-.canvas-container,
-.layers-panel {
-  /* No desktop, a altura é calculada */
-  height: calc(100vh - var(--header-height) - 40px);
-}
-
-.workspace-layout.layers-panel-hidden {
-  grid-template-columns: var(--sidebar-width) 1fr 0;
-}
-.workspace-layout.layers-panel-hidden .layers-panel {
-  transform: translateX(100%);
-}
-
-/* ----------------------------------------- */
-/* --- RESPONSIVIDADE (MOBILE) --- */
-/* ----------------------------------------- */
-.workspace-layout.is-mobile {
-  grid-template-columns: 1fr !important;
-  /* --- CORREÇÃO: Define uma linha no grid para a barra de ferramentas --- */
-  grid-template-rows: var(--header-height) 40px 1fr var(--mobile-toolbar-height);
-  grid-template-areas:
-    'header'
     'top-menu'
-    'canvas'
-    'tools' !important; /* A barra de ferramentas agora tem a sua própria área */
+    'canvas';
 }
 
-.workspace-layout.is-mobile .tools-sidebar {
-  grid-area: tools !important; /* Atribui a área correta do grid */
-  /* --- CORREÇÃO: Remove position:fixed e ajusta para o layout de grid --- */
-  position: relative;
-  bottom: unset;
-  left: unset;
-  width: 100%;
-  height: 100%; /* Ocupa a altura da sua linha no grid */
-  flex-direction: row;
-  justify-content: center;
-  align-items: center; /* Centraliza os ícones verticalmente */
-  background-color: var(--c-surface); /* Fundo sólido para evitar transparência indesejada */
-  border-top: 1px solid var(--c-border);
-  padding: 0 var(--spacing-2); /* Ajusta o padding */
-  box-shadow: none; /* Remove a sombra desnecessária no layout de grid */
-  z-index: 220;
-}
+/* O AppHeader foi movido para dentro das views específicas (Home, Account) */
+.top-menu-bar { grid-area: top-menu; }
+.canvas-container { grid-area: canvas; }
 
-/* --- CORREÇÃO: Garante que a altura dos containers se ajusta ao novo grid --- */
-.workspace-layout.is-mobile .canvas-container,
-.workspace-layout.is-mobile .layers-panel {
-  height: 100%; /* Faz com que ocupem 100% da altura da sua área no grid */
-}
-
-.workspace-layout.is-mobile .tools-grid {
-  display: flex;
-  gap: var(--spacing-3);
-}
-
-.workspace-layout.is-mobile .tool-drawer {
-  bottom: calc(100% + 8px);
-  top: auto;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.workspace-layout.is-mobile .layers-panel {
-  grid-area: unset !important;
-  position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 300px;
-  max-width: 85vw;
-  height: 100vh !important;
-  transform: translateX(100%);
-  transition: transform 0.3s ease-in-out;
-  box-shadow: var(--shadow-lg);
-  z-index: 250;
-}
-
-.workspace-layout.is-mobile.layers-panel-visible .layers-panel {
-  transform: translateX(0);
-}
-
-.workspace-layout.is-mobile .show-layers-btn {
-  display: none !important;
-}
-
-.workspace-layout .mobile-layers-btn {
-    display: none;
-}
-.workspace-layout.is-mobile .mobile-layers-btn {
-    display: flex;
-}
-.workspace-layout.is-mobile .user-actions,
-.workspace-layout.is-mobile .btn-secondary,
-.workspace-layout.is-mobile .document-title,
-.workspace-layout.is-mobile .divider,
-.workspace-layout.is-mobile .unit-controls {
-    display: none;
-}
+/* Removemos todas as regras de colunas e áreas antigas */

@@ -1,5 +1,4 @@
 <script setup>
-import AppHeader from '@/components/layout/AppHeader.vue'
 import TopMenuBar from '@/components/layout/TopMenuBar.vue'
 import ToolsSidebar from '@/components/layout/ToolsSidebar.vue'
 import CanvasArea from '@/components/canvas/CanvasArea.vue'
@@ -27,8 +26,9 @@ const toolsSidebarRef = ref(null)
 
 const isUploadModalVisible = ref(false)
 const isNewProjectModalVisible = ref(false)
-const isLayersPanelVisible = ref(true);
 
+// O controle do painel de camadas agora é feito pela store
+const isLayersPanelVisible = computed(() => store.getPanelState('layers')?.isVisible);
 
 const isMobileLayout = ref(false)
 let isMobileUserAgent = false
@@ -44,10 +44,6 @@ onMounted(() => {
   isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   checkLayoutMode();
   window.addEventListener('resize', checkLayoutMode);
-
-  if (isMobileLayout.value) {
-    isLayersPanelVisible.value = false;
-  }
   window.addEventListener('keydown', handleKeyDown);
 });
 
@@ -63,14 +59,6 @@ const artboardStyle = computed(() => ({
 }))
 
 function handleWrapperClick(event) {
-  if (isMobileLayout.value) {
-    const layersPanel = event.target.closest('.layers-panel');
-    const headerButton = event.target.closest('.mobile-layers-btn');
-    if (!layersPanel && !headerButton && isLayersPanelVisible.value) {
-      isLayersPanelVisible.value = false;
-    }
-  }
-
   if (store.workspace.isContextMenuVisible) {
     store.showContextMenu(false)
   }
@@ -81,10 +69,6 @@ function handleWrapperClick(event) {
 
 function showUploadModal() {
   isUploadModalVisible.value = true;
-}
-
-function openNewProjectModal() {
-  isNewProjectModalVisible.value = true;
 }
 
 function handleKeyDown(e) {
@@ -108,24 +92,8 @@ function handleKeyDown(e) {
 </script>
 
 <template>
-  <div
-    class="workspace-layout"
-    :class="{
-      'is-mobile': isMobileLayout,
-      'preview-mode': store.workspace.viewMode === 'preview',
-      'layers-panel-hidden': !isLayersPanelVisible,
-      'layers-panel-visible': isLayersPanelVisible
-    }"
-    @click="handleWrapperClick"
-  >
-    <AppHeader @toggle-layers-panel="isLayersPanelVisible = !isLayersPanelVisible" />
+  <div class="workspace-layout" @click="handleWrapperClick">
     <TopMenuBar @open-new-project-modal="isNewProjectModalVisible = true" />
-
-    <ToolsSidebar
-      ref="toolsSidebarRef"
-      :mode="store.workspace.viewMode"
-      @show-upload-modal="showUploadModal"
-    />
 
     <main class="canvas-container">
       <div v-if="store.layers.length === 0" class="empty-workspace-placeholder">
@@ -158,6 +126,12 @@ function handleKeyDown(e) {
         </div>
       </template>
 
+      <ToolsSidebar
+        ref="toolsSidebarRef"
+        :mode="store.workspace.viewMode"
+        @show-upload-modal="showUploadModal"
+      />
+      <LayersPanel />
       <ToolOptionsPanel />
       <GlobalHistoryModal />
       <LayerHistoryModal />
@@ -176,18 +150,11 @@ function handleKeyDown(e) {
         :is-visible="isNewProjectModalVisible"
         @close="isNewProjectModalVisible = false"
       />
-
     </main>
-    <button v-if="store.workspace.viewMode === 'edit' && !isLayersPanelVisible" class="show-layers-btn" @click="isLayersPanelVisible = true">
-         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
-    </button>
-    <LayersPanel v-if="store.workspace.viewMode === 'edit'" @toggle-panel="isLayersPanelVisible = false" />
   </div>
 </template>
 
 <style scoped>
-/* ESTILOS DE LAYOUT FORAM MOVIDOS PARA main.css */
-
 .canvas-container {
   overflow: hidden;
   background-color: var(--c-background);
@@ -255,20 +222,5 @@ function handleKeyDown(e) {
   border-top-left-radius: var(--radius-md);
   border-top-right-radius: var(--radius-md);
   z-index: 250;
-}
-
-.show-layers-btn {
-    position: absolute;
-    top: calc(var(--header-height) + 40px + var(--spacing-4));
-    right: 0;
-    transform: translateX(calc(100% - 8px));
-    background-color: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-right: none;
-    padding: var(--spacing-3) var(--spacing-2);
-    border-top-left-radius: var(--radius-md);
-    border-bottom-left-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    z-index: 201;
 }
 </style>

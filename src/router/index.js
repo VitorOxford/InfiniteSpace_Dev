@@ -2,7 +2,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import WorkspaceView from '@/views/WorkspaceView.vue'
 import AuthView from '@/views/AuthView.vue'
-import AccountView from '@/views/AccountView.vue' // Importa a nova view
+import AccountView from '@/views/AccountView.vue'
+import HomeView from '@/views/HomeView.vue' // Esta linha causa o erro se o arquivo não existir
 import { supabase } from '@/supabase'
 
 const router = createRouter({
@@ -10,11 +11,16 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'home',
+      component: HomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/workspace',
       name: 'workspace',
       component: WorkspaceView,
       meta: { requiresAuth: true },
     },
-    // NOVA ROTA
     {
       path: '/account',
       name: 'account',
@@ -38,8 +44,8 @@ router.beforeEach(async (to, from, next) => {
 
   if (requiresAuth && !session) {
     next({ name: 'auth' })
-  } else if (!requiresAuth && session) {
-    next({ name: 'workspace' })
+  } else if (to.name === 'auth' && session) {
+    next({ name: 'home' })
   } else {
     next()
   }

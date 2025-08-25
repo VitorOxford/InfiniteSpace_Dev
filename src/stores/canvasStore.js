@@ -56,6 +56,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     previewRenderScale: 1,
     isTransforming: false,
     panels: {
+      layers: { isVisible: true, isPinned: false, position: { top: 60, left: window.innerWidth - 320 }, size: { width: 300, height: 500 } },
         toolOptions: { isVisible: false, isPinned: false, position: { top: 80, left: 72 }, size: { width: 280, height: 'auto' } },
         layerHistory: { isVisible: false, isPinned: false, position: { top: 120, left: 400 }, size: { width: 320, height: 450 } },
         globalHistory: { isVisible: false, isPinned: false, position: { top: 160, left: 450 }, size: { width: 320, height: 450 } },

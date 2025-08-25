@@ -13,5 +13,5 @@ import LoadingScreen from '@/components/common/LoadingScreen.vue'
 </template>
 
 <style>
-/* Estilos globais */
+/* Estilos globais permanecem aqui */
 </style>

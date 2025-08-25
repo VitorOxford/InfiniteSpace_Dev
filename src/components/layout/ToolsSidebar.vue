@@ -334,25 +334,24 @@ function getActiveIconForGroup(group) {
 </template>
 
 <style scoped>
-/* Estilos permanecem os mesmos da correção anterior */
 .tools-sidebar {
-  grid-area: tools;
+  position: fixed;
+  bottom: var(--spacing-4);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-2);
+  display: flex;
+  align-items: center;
   z-index: 210;
-}
-@media (min-width: 1025px) {
-    .tools-sidebar {
-        width: var(--sidebar-width);
-        background-color: var(--c-surface);
-        border-right: 1px solid var(--c-border);
-        padding: var(--spacing-2) 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
 }
 
 .tools-grid {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: var(--spacing-1);
 }
 
@@ -360,9 +359,10 @@ function getActiveIconForGroup(group) {
   position: relative;
 }
 .tool-divider {
-  height: 1px;
+  width: 1px;
+  height: 24px;
   background-color: var(--c-border);
-  margin: var(--spacing-2) var(--spacing-3);
+  margin: 0 var(--spacing-2);
 }
 .tool-button {
   position: relative;
@@ -397,9 +397,9 @@ function getActiveIconForGroup(group) {
 .variation-button:hover::after {
   content: attr(data-tooltip);
   position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
   background-color: var(--c-text-primary);
   color: var(--c-white);
   padding: var(--spacing-1) var(--spacing-3);
@@ -414,6 +414,9 @@ function getActiveIconForGroup(group) {
 
 .tool-drawer {
   position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
   background-color: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
@@ -422,12 +425,6 @@ function getActiveIconForGroup(group) {
   display: flex;
   flex-direction: column;
   z-index: 211;
-}
-@media (min-width: 1025px) {
-    .tool-drawer {
-        left: 100%;
-        top: 0;
-    }
 }
 
 .drawer-section {

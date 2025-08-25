@@ -1,10 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useImageAdjustmentsStore } from '@/stores/imageAdjustmentsStore'
 
 const store = useCanvasStore()
 const adjustmentsStore = useImageAdjustmentsStore()
+const router = useRouter() // Adiciona o router
 const activeMenu = ref(null)
 
 // --- CORREÇÃO ADICIONADA ---
@@ -103,6 +105,10 @@ function handleItemClick(item) {
 
 <template>
   <nav class="top-menu-bar">
+    <button class="home-button" @click="router.push({ name: 'home' })" title="Voltar para Início">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+    </button>
+    <div class="divider"></div>
     <div v-for="menu in menus" :key="menu.name" class="menu-item">
       <button @click="toggleMenu(menu.name)">{{ menu.name }}</button>
       <ul v-if="activeMenu === menu.name" class="dropdown-menu">
@@ -129,11 +135,32 @@ function handleItemClick(item) {
 .top-menu-bar {
   grid-area: top-menu;
   display: flex;
+  align-items: center; /* Alinha itens verticalmente */
   background-color: var(--c-surface);
   border-bottom: 1px solid var(--c-border);
   padding: 0 var(--spacing-3);
   height: 40px;
   z-index: 1000;
+}
+
+.home-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 32px;
+  border-radius: var(--radius-md);
+  color: var(--c-text-secondary);
+}
+.home-button:hover {
+  background-color: var(--c-surface-dark);
+  color: var(--c-text-primary);
+}
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--c-border);
+  margin: 0 var(--spacing-2);
 }
 .menu-item {
   position: relative;
@@ -178,7 +205,7 @@ function handleItemClick(item) {
   cursor: not-allowed;
   background-color: transparent !important;
 }
-.divider {
+.dropdown-menu .divider {
   height: 1px;
   background-color: var(--c-border);
   margin: var(--spacing-2) 0;
