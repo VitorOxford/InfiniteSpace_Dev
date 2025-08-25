@@ -9,6 +9,8 @@ const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
 const subscriptionStore = useSubscriptionStore()
 const router = useRouter()
+const emit = defineEmits(['toggle-layers-panel'])
+
 
 const viewModeText = computed(() => {
   return canvasStore.workspace.viewMode === 'edit' ? 'Ver Mockup' : 'Voltar a Editar'
@@ -190,6 +192,9 @@ async function logout() {
           </svg>
         </button>
       </div>
+       <button @click="emit('toggle-layers-panel')" class="icon-btn mobile-layers-btn" title="Camadas">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+      </button>
     </div>
   </header>
 </template>
@@ -296,5 +301,18 @@ async function logout() {
 }
 .unit-controls button:not(.active):hover {
   color: var(--c-text-primary);
+}
+.mobile-layers-btn {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .mobile-layers-btn {
+        display: flex;
+        margin-left: var(--spacing-2);
+    }
+    .user-actions {
+        display: none; /* Opcional: Esconder ações de utilizador para simplificar */
+    }
 }
 </style>

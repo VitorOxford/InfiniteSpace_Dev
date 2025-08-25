@@ -365,6 +365,8 @@ function handleInteractionMove(e) {
         handlePinch(e);
         return;
     }
+    lastTouchDistance = null; // Reseta a distância da pinça se voltar a ter um dedo
+
     const coords = getEventCoordinates(e);
     const mouse = { x: coords.clientX, y: coords.clientY };
     const canvasMouse = { x: coords.offsetX, y: coords.offsetY };
@@ -508,11 +510,13 @@ function handleMouseUp(e) {
 }
 
 function handleTouchStart(e) {
+    e.preventDefault();
     if (e.touches.length === 1) {
-        e.preventDefault();
         handleInteractionStart(e);
     } else if (e.touches.length > 1) {
-        e.preventDefault();
+        // Inicia o gesto de pinça, limpando estados de um dedo
+        isPanning = false;
+        isDraggingLayer = false;
         lastTouchDistance = null;
     }
 }
@@ -525,7 +529,9 @@ function handleTouchMove(e) {
 function handleTouchEnd(e) {
     e.preventDefault();
     lastTouchDistance = null;
-    handleInteractionEnd(e);
+    if (e.touches.length === 0) {
+        handleInteractionEnd(e);
+    }
 }
 
 
@@ -616,6 +622,12 @@ function handleTouchEnd(e) {
 .horizontal-ruler,
 .vertical-ruler {
   z-index: 60;
+  display: none; /* Escondido por padrão, mostrado no desktop */
+}
+@media(min-width: 1025px) {
+  .ruler-corner, .horizontal-ruler, .vertical-ruler {
+    display: block;
+  }
 }
 .ruler-corner {
   grid-area: 1 / 1 / 2 / 2;
@@ -649,5 +661,15 @@ function handleTouchEnd(e) {
   background-position: var(--grid-position-x) var(--grid-position-y);
   pointer-events: none;
   opacity: 0.5;
+}
+
+@media (max-width: 1024px) {
+  .canvas-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+  .canvas-area-wrapper {
+    grid-area: 1 / 1 / 2 / 2;
+  }
 }
 </style>

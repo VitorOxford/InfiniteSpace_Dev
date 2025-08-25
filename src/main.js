@@ -1,6 +1,5 @@
 // src/main.js
 import './assets/main.css'
-import './assets/mobile.css' // Importa os estilos para dispositivos móveis
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -24,6 +23,5 @@ app.directive('focus', {
     el.focus()
   }
 })
-
 
 app.mount('#app')
