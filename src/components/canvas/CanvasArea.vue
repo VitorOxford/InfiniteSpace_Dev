@@ -26,6 +26,7 @@ let isDrawingSelection = false
 let isPainting = false
 let isErasing = false
 let isWandSelecting = false;
+let isPinching = false; // Flag para controlar o estado de pinça
 let currentStroke = []
 let transformType = null
 let dragStartOffset = { x: 0, y: 0 }
@@ -166,7 +167,7 @@ function renderPreviewMode(canvas) {
 function initCanvas() {
   ctx = canvasRef.value.getContext('2d')
   setupEventListeners()
-  resizeCanvas() // Initial resize
+  resizeCanvas()
 }
 
 function resizeCanvas() {
@@ -279,14 +280,12 @@ function handleInteractionStart(e) {
 
     switch (store.activeTool) {
         case 'magic-wand':
-            if (!layerCoords) return alert('Selecione uma camada para usar a varinha mágica.');
+            if (!layerCoords) return;
             isWandSelecting = true;
             store.selectWithMagicWand(layerCoords, e.shiftKey);
             break;
         case 'brush':
-            if (!layerCoords && !store.selectedLayer) {
-                store.createDrawingLayer();
-            }
+            if (!layerCoords && !store.selectedLayer) store.createDrawingLayer();
             isPainting = true;
             actionStartState = store.getClonedLayerState(store.selectedLayer);
             currentActionName = 'Pintura';
@@ -294,7 +293,7 @@ function handleInteractionStart(e) {
             store.applyPaintToLayer(currentStroke);
             break;
         case 'bucket':
-            if (!layerCoords) return alert('Selecione uma camada para pintar.');
+            if (!layerCoords) return;
             store.floodFillLayer(layerCoords.x, layerCoords.y);
             break;
         case 'eyedropper':
@@ -434,55 +433,45 @@ function handleInteractionEnd(e) {
         isErasing = false;
         currentStroke = [];
     }
+
     isPanning = false
     isDraggingLayer = false
     isTransformingLayer = false
     isDrawingSelection = false
     isWandSelecting = false;
+    isPinching = false;
+    lastTouchDistance = null;
     document.body.style.cursor = 'default'
 
     const cursorMap = {
-        'rect-select': 'crosshair',
-        'lasso-select': 'crosshair',
-        'magic-wand': 'crosshair',
-        brush: 'crosshair',
-        eraser: 'crosshair',
-        move: 'grab',
+        'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair',
+        brush: 'crosshair', eraser: 'crosshair', move: 'grab',
     }
     if (canvasRef.value) {
         canvasRef.value.style.cursor = cursorMap[store.activeTool] || 'default'
     }
 }
 
-// --- LÓGICA DE PINÇA CORRIGIDA ---
-function handlePinchStart(e) {
-    // Cancela outras ações
-    isPanning = false;
-    isDraggingLayer = false;
-
-    const t1 = e.touches[0];
-    const t2 = e.touches[1];
-    lastTouchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-}
 
 function handlePinchMove(e) {
-    if (e.touches.length < 2 || lastTouchDistance === null) return;
+    if (!isPinching || e.touches.length < 2 || lastTouchDistance === null) return;
+    e.preventDefault();
 
     const t1 = e.touches[0];
     const t2 = e.touches[1];
     const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    const zoomFactor = dist / lastTouchDistance;
 
     const rect = canvasRef.value.getBoundingClientRect();
     const midPoint = {
         x: ((t1.clientX + t2.clientX) / 2) - rect.left,
         y: ((t1.clientY + t2.clientY) / 2) - rect.top
     };
-    const zoomFactor = dist / lastTouchDistance;
+
     store.zoomAtPoint(zoomFactor, midPoint);
     lastTouchDistance = dist;
 }
 
-// --- MANIPULADORES DE EVENTO CORRIGIDOS ---
 function handleMouseDown(e) {
     if (e.button !== 0) return;
     handleInteractionStart(e);
@@ -496,28 +485,35 @@ function handleMouseUp(e) {
 
 function handleTouchStart(e) {
     e.preventDefault();
-    if (e.touches.length === 1) {
+    if (e.touches.length === 2) {
+        isPinching = true;
+        isPanning = false; // Garante que o pan não aconteça
+        isDraggingLayer = false;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        lastTouchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    } else if (e.touches.length === 1 && !isPinching) {
         handleInteractionStart(e);
-    } else if (e.touches.length === 2) {
-        handlePinchStart(e);
     }
 }
 
 function handleTouchMove(e) {
     e.preventDefault();
-    if (e.touches.length === 1) {
-        handleInteractionMove(e);
-    } else if (e.touches.length === 2) {
+    if (isPinching) {
         handlePinchMove(e);
+    } else if (e.touches.length === 1) {
+        handleInteractionMove(e);
     }
 }
 
 function handleTouchEnd(e) {
     e.preventDefault();
-    lastTouchDistance = null; // Reseta a distância da pinça no final
+    if (e.touches.length < 2) {
+        isPinching = false;
+        lastTouchDistance = null;
+    }
     handleInteractionEnd(e);
 }
-// ------------------------------------
 
 function handleWheel(e) { e.preventDefault(); if (store.workspace.viewMode === 'preview') return; const zoomIntensity = 0.1; const direction = e.deltaY < 0 ? 1 : -1; const mouse = { x: e.offsetX, y: e.offsetY }; const { pan, zoom } = store.workspace; const worldX = (mouse.x - pan.x) / zoom; const worldY = (mouse.y - pan.y) / zoom; const newZoom = zoom * (1 + direction * zoomIntensity); const saneZoom = Math.max(0.02, Math.min(newZoom, 10)); const newPanX = mouse.x - worldX * saneZoom; const newPanY = mouse.y - worldY * saneZoom; store.updateWorkspace({ zoom: saneZoom, pan: { x: newPanX, y: newPanY } }); }
 function screenToWorkspaceCoords(screenCoords) { const { pan, zoom } = store.workspace; return { x: (screenCoords.x - pan.x) / zoom, y: (screenCoords.y - pan.y) / zoom }; }
