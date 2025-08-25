@@ -125,8 +125,8 @@ function handleKeyDown(e) {
       <div v-if="store.layers.length === 0" class="empty-workspace-placeholder">
         <div class="placeholder-content">
           <img src="/logo.svg" alt="Logo" />
-          <h2>Bem-vindo ao MockupCreator Pro</h2>
-          <p>Comece um novo projeto a partir do menu "Ficheiro > Novo Projeto..." ou carregue um ficheiro.</p>
+          <h2>Bem-vindo ao InfiniteSpace</h2>
+          <p>Comece um novo projeto infinito =)</p>
         </div>
       </div>
 
