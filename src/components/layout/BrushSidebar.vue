@@ -38,6 +38,8 @@ function selectToolAndTab(tool, tab) {
   <div>
     <FloatingPanel panel-id="toolOptions" title="Opções da Ferramenta">
         <div class="panel-content">
+            <ColorWheelPicker v-if="showColorPicker" @close="showColorPicker = false" />
+
             <div class="tool-tabs">
                 <button :class="{active: activeOptionsTab === 'brush'}" @click="selectToolAndTab('brush', 'brush')" title="Pincel (B)">
                      <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
@@ -135,7 +137,6 @@ function selectToolAndTab(tool, tab) {
             </div>
         </div>
     </FloatingPanel>
-    <ColorWheelPicker v-if="showColorPicker" @close="showColorPicker = false" />
   </div>
 </template>
 
@@ -145,6 +146,7 @@ function selectToolAndTab(tool, tab) {
     padding: 0;
     display: flex;
     flex-direction: column;
+    position: relative; /* Adicionado para posicionar o seletor de cores */
 }
 .tool-tabs {
     display: flex;

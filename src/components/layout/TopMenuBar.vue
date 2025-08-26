@@ -14,13 +14,19 @@ const emit = defineEmits(['open-new-project-modal', 'toggle-layers-panel'])
 const isLassoSelectionActive = computed(() => store.workspace.lasso.points.length > 2)
 const isLayerSelected = computed(() => !!store.selectedLayerId);
 
+function goToHome() {
+  router.push({ name: 'home' });
+}
+
 const menus = [
   {
     name: 'Ficheiro',
     items: [
       { name: 'Novo Projeto...', action: () => emit('open-new-project-modal') },
       { type: 'divider' },
-      { name: 'Exportar...', action: () => alert('Exportar!') }
+      // --- NOVA OPÇÃO DE EXPORTAR ADICIONADA AQUI ---
+      { name: 'Exportar Área Desenhada...', action: () => store.exportDrawnArea(), requiresLayer: true },
+      { name: 'Exportar Camada Selecionada...', action: () => store.exportLayer(store.selectedLayerId, 'png'), requiresLayer: true }
     ]
   },
   {
@@ -71,7 +77,7 @@ function handleItemClick(item) {
 <template>
   <nav class="top-menu-bar">
     <div class="menu-left">
-        <button class="home-button" @click="router.push({ name: 'home' })" title="Voltar para Início">
+        <button class="home-button" @click="goToHome" title="Voltar para Início">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
         </button>
         <div class="divider"></div>

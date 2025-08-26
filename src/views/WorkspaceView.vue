@@ -57,12 +57,7 @@ watch(canvasWrapperRef, (newEl) => {
 });
 
 onMounted(() => {
-  // --- CORREÇÃO APLICADA AQUI ---
-  // Inicia com um canvas de desenho se não houver camadas.
-  if (store.layers.length === 0) {
-    store.initializeEmptyWorkspace();
-  }
-
+  // --- PROBLEMA CORRIGIDO: Removida a inicialização automática de um projeto em branco ---
   window.addEventListener('keydown', handleKeyDown);
   updateWrapperDimensions();
 });

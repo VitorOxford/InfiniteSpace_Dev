@@ -13,10 +13,6 @@ const themeStore = useThemeStore() // Usa a nova store
 const router = useRouter()
 const emit = defineEmits(['toggle-layers-panel'])
 
-const viewModeText = computed(() => {
-  return canvasStore.workspace.viewMode === 'edit' ? 'Ver Mockup' : 'Voltar a Editar'
-})
-
 const planIcon = computed(() => {
   const plan = authStore.profile?.subscription_plan || 'free'
   switch (plan) {
@@ -61,33 +57,9 @@ async function logout() {
     </div>
 
     <div class="header-group center">
-      <div class="unit-controls" v-if="canvasStore.workspace.viewMode === 'edit'">
-        <button
-          :class="{ active: canvasStore.workspace.rulers.unit === 'px' }"
-          @click="canvasStore.setRulerUnit('px')"
-        >
-          PX
-        </button>
-        <button
-          :class="{ active: canvasStore.workspace.rulers.unit === 'cm' }"
-          @click="canvasStore.setRulerUnit('cm')"
-        >
-          CM
-        </button>
-        <button
-          :class="{ active: canvasStore.workspace.rulers.unit === 'in' }"
-          @click="canvasStore.setRulerUnit('in')"
-        >
-          IN
-        </button>
       </div>
-    </div>
 
     <div class="header-group right">
-      <button @click="canvasStore.toggleViewMode()" class="btn btn-secondary">
-        {{ viewModeText }}
-      </button>
-
       <button @click="themeStore.toggleTheme" class="icon-btn" title="Alternar Tema">
         <svg v-if="themeStore.isDarkMode" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
         <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>

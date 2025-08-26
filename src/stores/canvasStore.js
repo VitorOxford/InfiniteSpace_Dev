@@ -121,7 +121,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   })
 
-  // --- FUNÇÃO ADICIONADA AQUI ---
   function initializeEmptyWorkspace() {
     if (layers.value.length === 0) {
       createBlankCanvas({
@@ -221,30 +220,33 @@ export const useCanvasStore = defineStore('canvas', () => {
       thumbCanvas.height = layer.image.height * ratio;
       thumbCanvas.getContext('2d').drawImage(layer.image, 0, 0, thumbCanvas.width, thumbCanvas.height);
       layer.imageUrl = thumbCanvas.toDataURL();
+    } else if (layer && layer.type === 'vector') {
+        // Thumbnail para camadas de vetor pode ser implementado aqui
+        layer.imageUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMiAxLjY3YTEgMSAwIDAgMSAwuMy43bDUgNWExIDEgMCAwIDEgMCAxLjQybC05IDlhMSAxIDAgMCAxLTEuNDIgMGwtNSA1YTEgMSAwIDAgMSAwLTEuNDJsOS05YTEgMSAwIDAgMSAuNzItLjN6IE0xMiAzLjA4TDQuMDggMTEgOSAxNS45MiAxNyA4bC01LTV6IE01LjUgMTIuNDJsNCA0TDEwLjkxIDE3LjkxIDE3LjkxIDEwLjkxIDUuNSAxMi40MnoiLz48L3N2Zz4=';
     }
   }
 
   function getClonedLayerState(layer) {
-      if (!layer || !layer.image) return null;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = layer.image.width;
-      tempCanvas.height = layer.image.height;
-      tempCanvas.getContext('2d').drawImage(layer.image, 0, 0);
+      if (!layer) return null;
+      if (layer.image) {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = layer.image.width;
+          tempCanvas.height = layer.image.height;
+          tempCanvas.getContext('2d').drawImage(layer.image, 0, 0);
 
-      return {
-          id: layer.id,
-          name: layer.name,
-          type: layer.type,
-          visible: layer.visible,
-          opacity: layer.opacity,
-          x: layer.x,
-          y: layer.y,
-          scale: layer.scale,
-          rotation: layer.rotation,
-          metadata: JSON.parse(JSON.stringify(layer.metadata)),
-          adjustments: JSON.parse(JSON.stringify(layer.adjustments)),
-          imageDataUrl: tempCanvas.toDataURL(),
-      };
+          return {
+              id: layer.id, name: layer.name, type: layer.type,
+              visible: layer.visible, opacity: layer.opacity,
+              x: layer.x, y: layer.y, scale: layer.scale, rotation: layer.rotation,
+              metadata: JSON.parse(JSON.stringify(layer.metadata)),
+              adjustments: JSON.parse(JSON.stringify(layer.adjustments)),
+              imageDataUrl: tempCanvas.toDataURL(),
+          };
+      }
+      if (layer.type === 'vector') {
+          return JSON.parse(JSON.stringify(layer));
+      }
+      return null;
   }
 
   function getClonedGlobalState() {
@@ -287,6 +289,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         contrast: 100, brightness: 100, invert: 0,
         flipH: false, flipV: false,
       },
+      path: type === 'vector' ? [] : undefined, // Propriedade para camadas de vetor
       version: 1,
     })
   }
@@ -319,7 +322,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         worker.terminate();
       };
       worker.postMessage({ file });
-    } else {
+    } else if (imageUrl) {
       try {
         const normalizedImg = await normalizeImage(imageUrl);
         const imageWidth = metadata.originalWidth || normalizedImg.width;
@@ -337,6 +340,9 @@ export const useCanvasStore = defineStore('canvas', () => {
         console.error("Erro ao carregar e normalizar a imagem da web:", error);
         alert("Houve um erro ao carregar a imagem. Tente novamente.");
       }
+    } else {
+        // Para camadas sem imagem inicial (como vetor ou desenho)
+        finalizeLayerAddition(newLayer, initialPosition, initialScale);
     }
   }
 
@@ -372,8 +378,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   function applyPaintToLayer(points) {
-    if (!selectedLayer.value) {
-        createDrawingLayer();
+    if (!selectedLayer.value || !['drawing', 'pattern', 'mockup'].includes(selectedLayer.value.type)) {
+        return;
     }
     const layer = selectedLayer.value;
     if (layer.image instanceof ImageBitmap) {
@@ -520,6 +526,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     const index = layers.value.findIndex((l) => l.id === id)
     if (index > -1) {
       layers.value[index] = { ...layers.value[index], ...properties }
+      layers.value[index].version++;
     }
   }
 
@@ -565,7 +572,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
     function showSelectionContextMenu(visible, position = { x: 0, y: 0 }) { workspace.isSelectionContextMenuVisible = visible; workspace.selectionContextMenuPosition = position; }
     function showResizeModal(visible) { workspace.isResizeModalVisible = visible; }
-    function frameLayer(layerId) { const layer = layers.value.find((l) => l.id === layerId); const canvasEl = document.getElementById('mainCanvas'); if (!layer || !canvasEl || !layer.metadata.originalWidth) return; const padding = 0.8; const layerWidth = layer.metadata.originalWidth * layer.scale; const layerHeight = layer.metadata.originalHeight * layer.scale; const zoomX = (canvasEl.clientWidth * padding) / layerWidth; const zoomY = (canvasEl.clientHeight * padding) / layerHeight; const newZoom = Math.min(zoomX, zoomY, 2); workspace.zoom = newZoom; workspace.pan.x = canvasEl.clientWidth / 2 - layer.x * newZoom; workspace.pan.y = canvasEl.clientHeight / 2 - layer.y * newZoom; }
+    function frameLayer(layerId) { const layer = layers.value.find((l) => l.id === layerId); const canvasEl = document.getElementById('mainCanvas'); if (!layer || !canvasEl || !layer.metadata.originalWidth && !layer.path) return; const padding = 0.8; const layerWidth = layer.metadata.originalWidth * layer.scale; const layerHeight = layer.metadata.originalHeight * layer.scale; const zoomX = (canvasEl.clientWidth * padding) / layerWidth; const zoomY = (canvasEl.clientHeight * padding) / layerHeight; const newZoom = Math.min(zoomX, zoomY, 2); workspace.zoom = newZoom; workspace.pan.x = canvasEl.clientWidth / 2 - layer.x * newZoom; workspace.pan.y = canvasEl.clientHeight / 2 - layer.y * newZoom; }
     function setRulerUnit(unit) { workspace.rulers.unit = unit; }
     function togglePreviewInteractivity() { workspace.previewIsInteractive = !workspace.previewIsInteractive; if (!workspace.previewIsInteractive) endLasso(); }
     function setPreviewZoom(zoom) { workspace.previewZoom = zoom; }
@@ -612,11 +619,13 @@ export const useCanvasStore = defineStore('canvas', () => {
         version: 1,
       });
 
-      const newCanvas = document.createElement('canvas');
-      newCanvas.width = sourceLayer.image.width;
-      newCanvas.height = sourceLayer.image.height;
-      newCanvas.getContext('2d').drawImage(sourceLayer.image, 0, 0);
-      newLayerData.image = newCanvas;
+      if (sourceLayer.image) {
+          const newCanvas = document.createElement('canvas');
+          newCanvas.width = sourceLayer.image.width;
+          newCanvas.height = sourceLayer.image.height;
+          newCanvas.getContext('2d').drawImage(sourceLayer.image, 0, 0);
+          newLayerData.image = newCanvas;
+      }
 
       newLayerData.fullResImage = sourceLayer.fullResImage;
       newLayerData.lowResProxy = sourceLayer.lowResProxy;
@@ -762,6 +771,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   function updateLayerFromHistory(layerId, stateToRestore) {
       const layer = layers.value.find(l => l.id === layerId);
       if (layer && stateToRestore) {
+          if (stateToRestore.type === 'vector') {
+              Object.assign(layer, stateToRestore);
+              layer.version++;
+              updateLayerThumbnail(layer);
+              return;
+          }
           const { imageDataUrl, ...otherProps } = stateToRestore;
           Object.assign(layer, otherProps);
           if (imageDataUrl) {
@@ -787,6 +802,12 @@ export const useCanvasStore = defineStore('canvas', () => {
           const newLayer = createLayerObject(layerState.name, layerState.type, layerState.imageUrl, layerState.metadata);
           const { imageDataUrl, ...otherProps } = layerState;
           Object.assign(newLayer, otherProps);
+
+          if (layerState.type === 'vector') {
+              newLayers.push(newLayer);
+              continue;
+          }
+
           try {
               const img = new Image();
               await new Promise((resolve, reject) => {
@@ -900,6 +921,92 @@ export const useCanvasStore = defineStore('canvas', () => {
     link.click();
   }
 
+  async function exportDrawnArea() {
+    const drawingLayer = selectedLayer.value;
+    if (!drawingLayer || (drawingLayer.type !== 'drawing' && drawingLayer.type !== 'pattern')) {
+        alert('Por favor, selecione uma camada com conteúdo desenhado para usar esta função.');
+        return;
+    }
+
+    const imageToScan = drawingLayer.fullResImage || drawingLayer.image;
+    if (!imageToScan) {
+        alert('A camada selecionada está vazia.');
+        return;
+    }
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imageToScan.width;
+    tempCanvas.height = imageToScan.height;
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    tempCtx.drawImage(imageToScan, 0, 0);
+    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const data = imageData.data;
+
+    let minX = tempCanvas.width, minY = tempCanvas.height, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < tempCanvas.height; y++) {
+        for (let x = 0; x < tempCanvas.width; x++) {
+            const alpha = data[(y * tempCanvas.width + x) * 4 + 3];
+            if (alpha > 0) {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    }
+
+    if (maxX === -1) {
+        alert('Não foi encontrado nenhum desenho na camada selecionada.');
+        return;
+    }
+
+    const drawnWidth = maxX - minX + 1;
+    const drawnHeight = maxY - minY + 1;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = drawnWidth;
+    exportCanvas.height = drawnHeight;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    for (const layer of layers.value) {
+        if (!layer.visible || !layer.image) continue;
+
+        exportCtx.save();
+
+        const adj = layer.adjustments;
+        exportCtx.filter = [
+            `grayscale(${adj.grayscale || 0}%)`, `sepia(${adj.sepia || 0}%)`,
+            `saturate(${adj.saturate || 100}%)`, `contrast(${adj.contrast || 100}%)`,
+            `brightness(${adj.brightness || 100}%)`, `invert(${adj.invert || 0}%)`
+        ].join(' ');
+
+        const relativeX = layer.x - (drawingLayer.x - drawingLayer.metadata.originalWidth / 2 + minX);
+        const relativeY = layer.y - (drawingLayer.y - drawingLayer.metadata.originalHeight / 2 + minY);
+
+        exportCtx.translate(relativeX, relativeY);
+        exportCtx.rotate(layer.rotation);
+        exportCtx.scale(layer.scale, layer.scale);
+        exportCtx.globalAlpha = layer.opacity;
+
+        exportCtx.drawImage(
+            layer.fullResImage || layer.image,
+            -layer.metadata.originalWidth / 2,
+            -layer.metadata.originalHeight / 2,
+            layer.metadata.originalWidth,
+            layer.metadata.originalHeight
+        );
+
+        exportCtx.restore();
+    }
+
+    const dataUrl = exportCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = `${drawingLayer.name}_export.png`;
+    link.href = dataUrl;
+    link.click();
+}
+
   // --- Funções para Pastas ---
   function createFolder(name = 'Nova Pasta') {
     const newFolder = reactive({
@@ -1009,6 +1116,27 @@ function createDrawingLayer() {
     selectLayer(newLayer.id);
     layerHistoryStore.addLayerState(newLayer.id, getClonedLayerState(newLayer), 'Criação da Camada de Desenho');
     globalHistoryStore.addState(getClonedGlobalState(), 'Adicionar Camada de Desenho');
+    return newLayer; // Importante para que CanvasArea.vue possa usar a nova camada imediatamente
+}
+
+// --- NOVA LÓGICA PARA VETORIZAÇÃO ---
+function createVectorLayer() {
+    const newLayer = createLayerObject('Camada de Vetor', 'vector', null);
+    layers.value.push(newLayer);
+    selectLayer(newLayer.id);
+    globalHistoryStore.addState(getClonedGlobalState(), 'Adicionar Camada de Vetor');
+    return newLayer;
+}
+
+function addVectorPoint(point) {
+    let layer = selectedLayer.value;
+    if (!layer || layer.type !== 'vector') {
+        layer = createVectorLayer();
+    }
+    const originalState = getClonedLayerState(layer);
+    layer.path.push(point);
+    layer.version++;
+    commitLayerStateToHistory(layer.id, originalState, 'Adicionar Ponto Vetorial');
 }
 
 
@@ -1027,8 +1155,10 @@ function createDrawingLayer() {
     zoomIn, zoomOut, zoomToFit, zoomAtPoint,
     createBlankCanvas,
     exportLayer,
-    // --- FUNÇÃO EXPORTADA AQUI ---
+    exportDrawnArea,
     initializeEmptyWorkspace,
+    createDrawingLayer, // --- CORREÇÃO: Exportando a função ---
+    addVectorPoint, // Exportando a nova função de vetor
     // Funções de Pastas
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
   }

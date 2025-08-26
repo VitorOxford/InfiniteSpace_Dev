@@ -45,6 +45,19 @@ const editTools = [
     icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
     requiresLayer: false,
   },
+  // --- NOVA FERRAMENTA DE UNIDADES DA RÉGUA ADICIONADA AQUI ---
+  {
+    id: 'ruler-units',
+    name: 'Unidades da Régua',
+    icon: 'M3 3v18h18M3 8h4m-4 8h4m4-13v4m8-4v4',
+    isGroup: true,
+    requiresLayer: false,
+    options: [
+        { id: 'px', name: 'Pixels (px)', action: () => store.setRulerUnit('px') },
+        { id: 'cm', name: 'Centímetros (cm)', action: () => store.setRulerUnit('cm') },
+        { id: 'in', name: 'Polegadas (in)', action: () => store.setRulerUnit('in') },
+    ]
+  },
   { type: 'divider' },
   {
     id: 'paint-group',
@@ -199,6 +212,13 @@ function handleToolClick(tool, event) {
         activeToolDrawer.value = tool.id;
         isDrawerPersistent.value = true;
       }
+    } else { // Handle groups without children, like the new ruler group
+        if (activeToolDrawer.value === tool.id) {
+            closeDrawer();
+        } else {
+            activeToolDrawer.value = tool.id;
+            isDrawerPersistent.value = true;
+        }
     }
     return;
   }
@@ -246,6 +266,11 @@ function handleMouseLeave() {
   }
 }
 
+function handleOptionClick(option) {
+  option.action()
+  closeDrawer()
+}
+
 function handleVariationClick(variation) {
   if (!store.isSelectionActive) {
     alert('Primeiro, selecione uma área com uma ferramenta de laço.')
@@ -279,7 +304,7 @@ watch(
 )
 
 function getActiveIconForGroup(group) {
-  const activeChild = group.children.find((child) => store.activeTool === child.id)
+  const activeChild = group.children?.find((child) => store.activeTool === child.id)
   return activeChild ? activeChild.icon : group.icon
 }
 </script>
@@ -296,11 +321,9 @@ function getActiveIconForGroup(group) {
             :class="{
               active:
                 store.activeTool === tool.id ||
-                (tool.isGroup && tool.children.some((c) => c.id === store.activeTool)) ||
-                (tool.id === 'zoom-workspace' && isZoomSliderVisible),
-              disabled:
-                (tool.requiresLayer && store.layers.length === 0) ||
-                (tool.previewOnly && !store.workspace.previewIsInteractive),
+                (tool.isGroup && tool.children && tool.children.some((c) => c.id === store.activeTool)) ||
+                (tool.id === 'zoom-workspace' && isZoomSliderVisible) ||
+                (tool.id === 'ruler-units' && store.workspace.rulers.unit === 'cm'), // Example active state
             }"
             @click="handleToolClick(tool, $event)"
             :data-tooltip="tool.name"
@@ -321,7 +344,7 @@ function getActiveIconForGroup(group) {
           </button>
 
           <div v-if="tool.isGroup && activeToolDrawer === tool.id" class="tool-drawer">
-            <div class="drawer-section">
+            <div v-if="tool.children" class="drawer-section">
               <button
                 v-for="child in tool.children"
                 :key="child.id"
@@ -347,6 +370,18 @@ function getActiveIconForGroup(group) {
                   <path :d="child.icon"></path>
                 </svg>
               </button>
+            </div>
+            <div v-if="tool.options" class="drawer-section variations">
+                 <button
+                    v-for="option in tool.options"
+                    :key="option.id"
+                    class="variation-button"
+                    :class="{ active: store.workspace.rulers.unit === option.id }"
+                    :data-tooltip="option.name"
+                    @click="handleOptionClick(option)"
+                >
+                    {{ option.name }}
+                </button>
             </div>
             <div v-if="tool.variations" class="tool-divider"></div>
             <div v-if="tool.variations" class="drawer-section variations">
@@ -491,6 +526,10 @@ function getActiveIconForGroup(group) {
 }
 .variation-button:hover {
   background-color: var(--c-surface-dark);
+}
+.variation-button.active {
+  background-color: var(--c-primary);
+  color: var(--c-white) !important;
 }
 .variation-button:disabled {
   color: var(--c-text-tertiary);
