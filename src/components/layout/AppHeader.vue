@@ -2,15 +2,16 @@
 import { useAuthStore } from '@/stores/authStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useSubscriptionStore } from '@/stores/subscriptionStore'
+import { useThemeStore } from '@/stores/themeStore' // Importa a nova store
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
 const subscriptionStore = useSubscriptionStore()
+const themeStore = useThemeStore() // Usa a nova store
 const router = useRouter()
-const emit = defineEmits(['toggle-layers-panel']) // <-- Evento para controlar o painel
-
+const emit = defineEmits(['toggle-layers-panel'])
 
 const viewModeText = computed(() => {
   return canvasStore.workspace.viewMode === 'edit' ? 'Ver Mockup' : 'Voltar a Editar'
@@ -49,14 +50,14 @@ async function logout() {
   <header class="app-header">
     <div class="header-group left">
       <img
-        src="/logo.svg"
+        src="https://fvtzdioouypsooogsoow.supabase.co/storage/v1/object/public/logo/logo%20teste.png"
         alt="Logo"
         class="logo"
         @click="router.push('/')"
         style="cursor: pointer"
       />
       <span class="divider"></span>
-      <div class="document-title">MockupCreator Pro</div>
+      <div class="document-title">INspace</div>
     </div>
 
     <div class="header-group center">
@@ -85,6 +86,11 @@ async function logout() {
     <div class="header-group right">
       <button @click="canvasStore.toggleViewMode()" class="btn btn-secondary">
         {{ viewModeText }}
+      </button>
+
+      <button @click="themeStore.toggleTheme" class="icon-btn" title="Alternar Tema">
+        <svg v-if="themeStore.isDarkMode" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
       </button>
 
       <div class="user-actions">
@@ -298,6 +304,10 @@ async function logout() {
   background-color: var(--c-white);
   color: var(--c-primary);
   box-shadow: var(--shadow-sm);
+}
+html.dark .unit-controls button.active {
+    background-color: var(--c-background);
+    color: var(--c-primary);
 }
 .unit-controls button:not(.active):hover {
   color: var(--c-text-primary);

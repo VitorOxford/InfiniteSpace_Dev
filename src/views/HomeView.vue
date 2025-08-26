@@ -16,7 +16,7 @@ function goToWorkspace() {
     <AppHeader />
     <main class="home-content">
       <div class="welcome-card">
-        <img src="/logo.svg" alt="MockupCreator Pro Logo" class="logo" />
+        <img src="https://fvtzdioouypsooogsoow.supabase.co/storage/v1/object/public/logo/logo%20teste.png" alt="MockupCreator Pro Logo" class="logo" />
         <h1>Seu Estúdio Criativo Digital</h1>
         <p>Crie, gerencie e edite seus mockups com facilidade. Comece um novo projeto ou continue de onde parou.</p>
         <button @click="goToWorkspace" class="btn-new-project">
@@ -26,7 +26,7 @@ function goToWorkspace() {
       </div>
 
       <div class="projects-grid">
-        <div class="project-card-placeholder">
+        <div class="project-card-placeholder" @click="goToWorkspace">
           <div class="placeholder-icon">+</div>
           <p>Novo Projeto</p>
         </div>
@@ -122,7 +122,7 @@ p {
 .project-card-placeholder:hover {
   border-color: var(--c-primary);
   color: var(--c-primary);
-  background-color: #f0f8ff;
+  background-color: var(--c-surface-dark);
 }
 
 .placeholder-icon {

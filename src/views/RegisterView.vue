@@ -211,6 +211,10 @@ async function handleSubmit() {
   padding: 0 4px;
 }
 
+html.dark .input-group label {
+    background-color: var(--c-surface);
+}
+
 .input-group input:focus + label,
 .input-group input:not(:placeholder-shown) + label {
   top: -8px;
@@ -228,12 +232,13 @@ async function handleSubmit() {
 .submit-btn {
   padding: 14px;
   border-radius: var(--radius-md);
-  background-color: var(--c-green-sheen);
+  background-color: var(--c-success);
   color: var(--c-white);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: all 0.2s ease;
+  border: none;
 }
 
 .submit-btn:hover:not(:disabled) {

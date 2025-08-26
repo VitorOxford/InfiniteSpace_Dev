@@ -76,7 +76,7 @@ async function handleAvatarUpload(event) {
 
         <form @submit.prevent="handleProfileUpdate" v-if="authStore.profile">
           <div class="avatar-section">
-            <img :src="profile.avatar_url || '/logo.svg'" alt="Avatar" class="avatar-img" />
+            <img :src="profile.avatar_url || 'https://fvtzdioouypsooogsoow.supabase.co/storage/v1/object/public/logo/logo%20teste.png'" alt="Avatar" class="avatar-img" />
             <div class="avatar-actions">
               <span>{{ profile.email }}</span>
               <label for="avatar-upload" class="btn-upload">
@@ -252,6 +252,7 @@ select {
   background-color: var(--c-surface-dark);
   font-family: inherit;
   font-size: var(--fs-base);
+  color: var(--c-text-primary);
 }
 input:focus,
 select:focus {

@@ -65,7 +65,7 @@ async function handleSubmit() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--c-sky-blue-light), var(--c-mint-cream), var(--c-lemon-chiffon), var(--c-peach));
+  background: linear-gradient(135deg, var(--c-palette-sky-light), var(--c-palette-mint), var(--c-palette-lemon), var(--c-palette-peach));
   background-size: 400% 400%;
   animation: gradient 18s ease infinite;
   padding: 2rem;
@@ -171,7 +171,7 @@ async function handleSubmit() {
 .submit-btn {
   padding: 14px;
   border-radius: var(--radius-md);
-  background: linear-gradient(to right, var(--c-sky-blue), var(--c-pacific-blue));
+  background: var(--c-primary);
   color: var(--c-white);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
@@ -181,6 +181,7 @@ async function handleSubmit() {
 }
 
 .submit-btn:hover:not(:disabled) {
+    background: var(--c-primary-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
