@@ -1,43 +1,59 @@
-/* src/assets/main.css - VERSÃO CORRIGIDA E COMPLETA */
+/* src/assets/main.css */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
+  /* Paleta de Cores Base */
+  --c-palette-sky-light: #89def7;
+  --c-palette-mint: #e2f5cc;
+  --c-palette-lemon: #fcf195;
+  --c-palette-peach: #ffd696;
+  --c-palette-green: #67cf53;
+  --c-palette-blue: #3bb2ef;
+  --c-palette-sky: #4dc0ea;
+  --c-palette-sky-medium: #8addf6;
+
+  /* --- Tema Claro (Light Mode) --- */
   --c-white: #ffffff;
-  --c-black: #000000;
-  --c-background: #f6f7f9;
-  --c-surface: #ffffff;
-  --c-surface-dark: #f0f2f5;
-  --c-primary: #0d99ff;
-  --c-primary-hover: #0077cc;
-  --c-text-primary: #171a1f;
+  --c-black: #1a1a1a;
+  --c-background: #f7f9fc;    /* Fundo principal da aplicação */
+  --c-surface: #ffffff;       /* Fundo de painéis, modais, etc. */
+  --c-surface-dark: #f0f2f5;  /* Um tom mais escuro para hover, etc. */
+  --c-primary: var(--c-palette-blue);
+  --c-primary-hover: var(--c-palette-sky);
+  --c-text-primary: #2c3e50;
   --c-text-secondary: #5a6472;
   --c-text-tertiary: #9098a4;
   --c-border: #e3e6ea;
   --c-border-hover: #d1d5db;
+  --c-success: var(--c-palette-green);
+
+  /* --- Variáveis de Layout (inalteradas) --- */
   --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --fs-xs: 0.75rem;
-  --fs-sm: 0.875rem;
-  --fs-base: 1rem;
-  --fw-regular: 400;
-  --fw-medium: 500;
-  --fw-semibold: 600;
-  --fw-bold: 700;
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 12px;
-  --spacing-4: 16px;
-  --spacing-5: 24px;
-  --spacing-6: 32px;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-full: 9999px;
+  --fs-xs: 0.75rem; --fs-sm: 0.875rem; --fs-base: 1rem;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --spacing-1: 4px; --spacing-2: 8px; --spacing-3: 12px; --spacing-4: 16px; --spacing-5: 24px; --spacing-6: 32px;
+  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px; --radius-full: 9999px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
   --transition-fast: all 0.15s ease-in-out;
   --header-height: 56px;
   --top-menu-bar-height: 40px;
+}
+
+/* --- Tema Escuro (Dark Mode) --- */
+html.dark {
+  --c-background: #1a202c;    /* Azul-escuro profundo */
+  --c-surface: #2d3748;       /* Fundo de painéis, um pouco mais claro */
+  --c-surface-dark: #1e2532;  /* Um tom mais escuro para hover */
+  --c-primary: var(--c-palette-sky-light); /* Cor primária mais brilhante para contraste */
+  --c-primary-hover: var(--c-palette-sky-medium);
+  --c-text-primary: #edf2f7;   /* Texto principal quase branco */
+  --c-text-secondary: #a0aec0; /* Texto secundário */
+  --c-text-tertiary: #718096;  /* Texto terciário */
+  --c-border: #4a5568;         /* Bordas */
+  --c-border-hover: #718096;
+  --c-success: var(--c-palette-green);
 }
 
 *, *::before, *::after {
@@ -53,11 +69,12 @@ html {
   background-color: var(--c-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: color 0.3s, background-color 0.3s;
 }
 
 body {
   font-size: var(--fs-sm);
-  overflow: hidden; /* Mantém o overflow hidden para o layout da aplicação */
+  overflow: hidden;
 }
 
 button {
@@ -67,24 +84,16 @@ button {
   background: none;
 }
 
-/* ----------------------------------------- */
-/* --- LAYOUT DO WORKSPACE SIMPLIFICADO --- */
-/* ----------------------------------------- */
-
+/* --- Layout do Workspace (Mantido) --- */
 .workspace-layout {
   display: grid;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  /* Grid simplificado: apenas a barra de menu superior e o canvas */
   grid-template-rows: var(--top-menu-bar-height) 1fr;
   grid-template-areas:
     'top-menu'
     'canvas';
 }
-
-/* O AppHeader foi movido para dentro das views específicas (Home, Account) */
 .top-menu-bar { grid-area: top-menu; }
 .canvas-container { grid-area: canvas; }
-
-/* Removemos todas as regras de colunas e áreas antigas */

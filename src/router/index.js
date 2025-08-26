@@ -10,23 +10,22 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      // --- CORREÇÃO APLICADA AQUI ---
-      // A rota raiz agora leva diretamente para o workspace.
+      // CORREÇÃO: A rota raiz (/) agora redireciona para a home.
       path: '/',
-      name: 'workspace', // Nome da rota principal agora é 'workspace'
-      component: WorkspaceView,
-      meta: { requiresAuth: true },
+      redirect: '/home',
     },
     {
-      // Rota antiga de workspace mantida para compatibilidade, redireciona para a raiz.
-      path: '/workspace',
-      redirect: '/',
-    },
-    {
-      // A HomeView pode ser mantida para um futuro dashboard
+      // A HomeView é a página principal após o login.
       path: '/home',
       name: 'home',
       component: HomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      // O editor agora tem sua própria rota dedicada e não é mais a raiz.
+      path: '/workspace',
+      name: 'workspace',
+      component: WorkspaceView,
       meta: { requiresAuth: true },
     },
     {
@@ -40,6 +39,12 @@ const router = createRouter({
       name: 'auth',
       component: AuthView,
     },
+    {
+      // Mantendo a rota de cadastro que criamos anteriormente.
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+    },
   ],
 })
 
@@ -52,9 +57,9 @@ router.beforeEach(async (to, from, next) => {
 
   if (requiresAuth && !session) {
     next({ name: 'auth' })
-  } else if (to.name === 'auth' && session) {
-    // Redireciona para o workspace ao invés da home
-    next({ name: 'workspace' })
+  } else if ((to.name === 'auth' || to.name === 'register') && session) {
+    // Esta parte já está correta, redirecionando para a home.
+    next({ name: 'home' })
   } else {
     next()
   }

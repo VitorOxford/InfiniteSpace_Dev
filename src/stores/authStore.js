@@ -17,11 +17,24 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
-  async function handleSignUp(credentials) {
-    const { data, error } = await supabase.auth.signUp(credentials)
-    if (error) throw error
-    user.value = data.user
-    return data
+ async function handleSignUp(credentials) {
+    const { email, password, full_name, phone } = credentials;
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        // Estes dados serão salvos no campo raw_user_meta_data da tabela auth.users
+        data: {
+          full_name: full_name,
+          phone: phone,
+          // Você pode adicionar outros campos aqui no futuro
+        }
+      }
+    });
+
+    if (error) throw error;
+    // Não é necessário fazer mais nada aqui. O trigger no banco de dados cuidará do resto.
+    return data;
   }
 
   async function handleLogout() {
