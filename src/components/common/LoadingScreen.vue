@@ -49,7 +49,7 @@ const startLoading = () => {
           setTimeout(() => {
             show.value = false;
             authStore.setAuthenticating(false);
-          }, 500);
+          }, 600); // espera o fade
         }, 1000);
       }, 300);
     }
@@ -69,7 +69,7 @@ const startLoading = () => {
   messageTimeoutId = setTimeout(changeMessage, 1800);
 };
 
-// Conversão HEX -> RGB
+// HEX -> RGB
 function hexToRgb(hex) {
   hex = hex.replace(/\s/g,'');
   if (!hex) return [255,255,255];
@@ -82,6 +82,7 @@ function hexToRgb(hex) {
   return [+r,+g,+b];
 }
 
+// Paleta definida
 const brandColors = [
   '#89def7','#e2f5cc','#fcf195','#ffd696','#67cf53','#3bb2ef','#4dc0ea','#8addf6'
 ].map(hex => hexToRgb(hex));
@@ -115,7 +116,7 @@ const initParticles = () => {
   function getCurrentColor(idx, alpha) {
     const c1 = brandColors[idx % brandColors.length];
     const c2 = brandColors[(idx+1) % brandColors.length];
-    const mix = (Math.sin(time) + 1) / 2; // suaviza transição
+    const mix = (Math.sin(time) + 1) / 2;
     const r = c1[0]*(1-mix)+c2[0]*mix;
     const g = c1[1]*(1-mix)+c2[1]*mix;
     const b = c1[2]*(1-mix)+c2[2]*mix;
@@ -137,7 +138,6 @@ const initParticles = () => {
       ctx.fill();
     });
 
-    // conexões
     for(let a=0;a<particles.length;a++){
       for(let b=a;b<particles.length;b++){
         const dx = particles[a].x - particles[b].x;
@@ -198,7 +198,7 @@ onUnmounted(()=>{
         <div class="progress-bar-container">
           <div class="progress-bar" :style="progressBarStyle"></div>
         </div>
-        <p class="loading-info">INspace • Carregando sistema</p>
+        <p class="loading-info">MockupCreator Pro • Carregando sistema</p>
       </div>
     </div>
   </transition>
@@ -214,10 +214,15 @@ onUnmounted(()=>{
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  background: linear-gradient(135deg, #89def7, #ffd696, #67cf53, #3bb2ef, #4dc0ea, #8addf6);
+  background: linear-gradient(135deg, #89def7, #e2f5cc, #fcf195, #ffd696, #67cf53, #3bb2ef, #4dc0ea, #8addf6);
   background-size: 1600% 1600%;
   animation: gradientShift 25s ease infinite;
   color: #fff;
+  pointer-events: auto;
+}
+
+.loading-fade-leave-to {
+  pointer-events: none;
 }
 
 @keyframes gradientShift {
@@ -236,6 +241,7 @@ onUnmounted(()=>{
   top:0; left:0;
   width:100%; height:100%;
   opacity:0.4;
+  pointer-events:none; /* não bloqueia clique */
 }
 
 .loading-content {
@@ -244,6 +250,7 @@ onUnmounted(()=>{
   display:flex;
   flex-direction:column;
   align-items:center;
+  pointer-events:auto;
 }
 
 .logo-container {
