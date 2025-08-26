@@ -17,23 +17,22 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
- async function handleSignUp(credentials) {
+  async function handleSignUp(credentials) {
     const { email, password, full_name, phone } = credentials;
     const { data, error } = await supabase.auth.signUp({
       email: email,
       password: password,
       options: {
-        // Estes dados serão salvos no campo raw_user_meta_data da tabela auth.users
+        // CORREÇÃO: Redireciona para a página de login após o clique no link de confirmação.
+        emailRedirectTo: `${window.location.origin}/auth`,
         data: {
           full_name: full_name,
           phone: phone,
-          // Você pode adicionar outros campos aqui no futuro
         }
       }
     });
 
     if (error) throw error;
-    // Não é necessário fazer mais nada aqui. O trigger no banco de dados cuidará do resto.
     return data;
   }
 
@@ -59,7 +58,6 @@ export const useAuthStore = defineStore('auth', () => {
       if (error && status !== 406) throw error
 
       if (data) {
-        // Adiciona um parâmetro de cache ao URL ao carregar para garantir que a imagem mais recente seja exibida
         if (data.avatar_url) {
           data.avatar_url = `${data.avatar_url.split('?')[0]}?t=${new Date().getTime()}`
         }
@@ -75,7 +73,6 @@ export const useAuthStore = defineStore('auth', () => {
   async function updateProfile(profileData) {
     if (!user.value) throw new Error('Utilizador não autenticado')
 
-    // Garante que guardamos o URL limpo (sem o parâmetro de cache) na base de dados
     if (profileData.avatar_url) {
       profileData.avatar_url = profileData.avatar_url.split('?')[0]
     }
@@ -85,7 +82,6 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (error) throw error
 
-    // Atualiza o estado local com um novo parâmetro de cache para reatividade imediata
     const updatedProfileData = { ...profile.value, ...updateData }
     if (updatedProfileData.avatar_url) {
       updatedProfileData.avatar_url = `${updatedProfileData.avatar_url.split('?')[0]}?t=${new Date().getTime()}`
@@ -100,24 +96,19 @@ export const useAuthStore = defineStore('auth', () => {
     const fileExt = file.name.split('.').pop()
     const filePath = `${user.value.id}.${fileExt}`
 
-    // A opção 'upsert: true' substitui o ficheiro se ele já existir, o que é perfeito para um avatar
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(filePath, file, { upsert: true })
 
     if (uploadError) throw uploadError
 
-    // Obtém o URL público permanente do ficheiro
     const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
 
-    // Atualiza o perfil do utilizador com o novo URL
     await updateProfile({ avatar_url: data.publicUrl })
 
-    // Retorna o URL com o parâmetro de cache para a UI atualizar imediatamente
     return `${data.publicUrl}?t=${new Date().getTime()}`
   }
 
-  // Função para controlar o estado do loading
   function setAuthenticating(status) {
     isAuthenticating.value = status
   }
@@ -126,7 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
     const {
       data: { session: currentSession },
     } = await supabase.auth.getSession()
-    if (currentSession) {
+    if (currentSession && currentSession.user && currentSession.user.email_confirmed_at) {
       session.value = currentSession
       user.value = currentSession.user
       await fetchProfile()
@@ -135,10 +126,20 @@ export const useAuthStore = defineStore('auth', () => {
     supabase.auth.onAuthStateChange(async (_, _session) => {
       session.value = _session
       user.value = _session?.user ?? null
-      if (user.value) {
+
+      // CORREÇÃO: Verifica se o email do usuário na sessão foi confirmado
+      const isEmailConfirmed = user.value && user.value.email_confirmed_at;
+
+      if (user.value && isEmailConfirmed) {
+        // Apenas busca o perfil se o usuário existir e o e-mail estiver confirmado
         await fetchProfile()
       } else {
+        // Caso contrário, garante que o perfil esteja limpo
         profile.value = null
+        // E se houver um usuário sem e-mail confirmado, remove a sessão temporária
+        if (user.value) {
+          await supabase.auth.signOut();
+        }
       }
     })
   })
