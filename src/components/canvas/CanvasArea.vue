@@ -189,7 +189,6 @@ function setupEventListeners() {
   document.addEventListener('mouseup', handleMouseUp)
   document.addEventListener('mouseleave', handleMouseUp)
 
-  // --- CORREÇÃO APLICADA AQUI ---
   canvas.addEventListener('touchstart', handleTouchStart, { passive: false })
   canvas.addEventListener('touchmove', handleTouchMove, { passive: false })
   canvas.addEventListener('touchend', handleTouchEnd)
@@ -538,7 +537,25 @@ function handleWheel(e) { e.preventDefault(); if (store.workspace.viewMode === '
 function screenToWorkspaceCoords(screenCoords) { const { pan, zoom } = store.workspace; return { x: (screenCoords.x - pan.x) / zoom, y: (screenCoords.y - pan.y) / zoom }; }
 function screenToLayerCoords(screenCoords, layer) { const { pan, zoom } = store.workspace; const { x: layerX, y: layerY, scale, rotation, metadata, adjustments } = layer; const { originalWidth, originalHeight } = metadata; const worldX = (screenCoords.x - pan.x) / zoom; const worldY = (screenCoords.y - pan.y) / zoom; const dx = worldX - layerX; const dy = worldY - layerY; const cos = Math.cos(-rotation); const sin = Math.sin(-rotation); const rotatedX = dx * cos - dy * sin; const rotatedY = dx * sin + dy * cos; const unscaledX = rotatedX / scale; const unscaledY = rotatedY / scale; const scaleFlipX = adjustments.flipH ? -1 : 1; const scaleFlipY = adjustments.flipV ? -1 : 1; const unscaledFlippedX = unscaledX / scaleFlipX; const unscaledFlippedY = unscaledY / scaleFlipY; return { x: unscaledFlippedX + originalWidth / 2, y: unscaledFlippedY + originalHeight / 2, }; }
 function getLayerScreenCenter(layer) { const { pan, zoom } = store.workspace; return { x: layer.x * zoom + pan.x, y: layer.y * zoom + pan.y }; }
-function getLayerAtPosition(screenCoords) { for (let i = store.layers.length - 1; i >= 0; i--) { const layer = store.layers[i]; if (!layer.image || !layer.visible) continue; const { x, y } = screenToLayerCoords(screenCoords, layer); if (x >= 0 && x <= layer.metadata.originalWidth && y >= 0 && y <= layer.metadata.originalHeight) { return layer; } } return null; }
+function getLayerAtPosition(screenCoords) {
+  for (let i = store.layers.length - 1; i >= 0; i--) {
+    const layer = store.layers[i];
+    if (!layer.visible) continue;
+
+    const { x, y } = screenToLayerCoords(screenCoords, layer);
+
+    if (layer.type === 'vector') {
+        if (x >= 0 && x <= layer.metadata.originalWidth && y >= 0 && y <= layer.metadata.originalHeight) {
+            return layer;
+        }
+    } else if (layer.image) {
+        if (x >= 0 && x <= layer.metadata.originalWidth && y >= 0 && y <= layer.metadata.originalHeight) {
+            return layer;
+        }
+    }
+  }
+  return null;
+}
 
 watch( () => store.activeTool, (newTool) => { if (canvasRef.value) { const cursorMap = { 'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', brush: 'crosshair', eraser: 'crosshair', move: 'grab', }; canvasRef.value.style.cursor = cursorMap[newTool] || 'default'; } }, )
 watch( () => [ store.layers.map(l => l.version), store.workspace.zoom, store.workspace.pan, store.layers, store.workspace.isTransforming ], () => { requestAnimationFrame(renderCanvas); }, { deep: true }, )

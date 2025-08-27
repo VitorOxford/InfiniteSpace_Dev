@@ -219,7 +219,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
 
-  function updateLayerThumbnail(layer) {
+function updateLayerThumbnail(layer) {
     if (layer && layer.image) {
       const thumbCanvas = document.createElement('canvas');
       const MAX_THUMB_SIZE = 128;
@@ -229,7 +229,9 @@ export const useCanvasStore = defineStore('canvas', () => {
       thumbCanvas.getContext('2d').drawImage(layer.image, 0, 0, thumbCanvas.width, thumbCanvas.height);
       layer.imageUrl = thumbCanvas.toDataURL();
     } else if (layer && layer.type === 'vector') {
-        layer.imageUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMiAxLjY3YTEgMSAwIDAgMSAwuMy43bDUgNWExIDEgMCAwIDEgMCAxLjQybC05IDlhMSAxIDAgMCAxLTEuNDIgMGwtNSA1YTEgMSAwIDAgMSAwLTEuNDJsOS05YTEgMSAwIDAgMSAuNzItLjN6IE0xMiAzLjA4TDQuMDggMTEgOSAxNS45MiAxNyA4bC01LTV6IE01LjUgMTIuNDJsNCA0TDEwLjkxIDE3LjkxIDE3LjkxIDEwLjkxIDUuNSAxMi40MnoiLz48L3N2Zz4=';
+        // CORREÇÃO: Define a imageUrl como nula para vetores para evitar o erro.
+        // O painel de camadas saberá como renderizar um ícone no lugar.
+        layer.imageUrl = null;
     }
   }
 
@@ -629,7 +631,26 @@ export const useCanvasStore = defineStore('canvas', () => {
     function setPreviewZoom(zoom) { workspace.previewZoom = zoom; }
     function selectLayer(id) { selectedLayerId.value = id; }
     function startLayerResize(mousePos, initialScale) { if (!selectedLayer.value) return; workspace.transformStart.mousePos = mousePos; workspace.transformStart.scale = initialScale; workspace.transformStart.layerCenter = { x: selectedLayer.value.x, y: selectedLayer.value.y }; }
-    function updateLayerResize(mousePos) { if (!selectedLayer.value) return; const { transformStart, pan, zoom } = workspace; const layer = selectedLayer.value; const centerScreenX = transformStart.layerCenter.x * zoom + pan.x; const centerScreenY = transformStart.layerCenter.y * zoom + pan.y; const initialDx = transformStart.mousePos.x - centerScreenX; const initialDy = transformStart.mousePos.y - centerScreenY; const initialDist = Math.sqrt(initialDx * initialDx + initialDy * initialDy); const currentDx = mouse.x - centerScreenX; const currentDy = mouse.y - centerScreenY; const currentDist = Math.sqrt(currentDx * currentDx + currentDy * currentDy); if (initialDist === 0) return; const scaleFactor = currentDist / initialDist; const newScale = transformStart.scale * scaleFactor; updateLayerProperties(layer.id, { scale: Math.max(0.01, newScale) }); }
+    function updateLayerResize(mousePos) { // O parâmetro é mousePos
+    if (!selectedLayer.value) return;
+    const { transformStart, pan, zoom } = workspace;
+    const layer = selectedLayer.value;
+    const centerScreenX = transformStart.layerCenter.x * zoom + pan.x;
+    const centerScreenY = transformStart.layerCenter.y * zoom + pan.y;
+    const initialDx = transformStart.mousePos.x - centerScreenX;
+    const initialDy = transformStart.mousePos.y - centerScreenY;
+    const initialDist = Math.sqrt(initialDx * initialDx + initialDy * initialDy);
+
+    // CORREÇÃO AQUI: Use mousePos em vez de mouse
+    const currentDx = mousePos.x - centerScreenX;
+    const currentDy = mousePos.y - centerScreenY;
+
+    const currentDist = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
+    if (initialDist === 0) return;
+    const scaleFactor = currentDist / initialDist;
+    const newScale = transformStart.scale * scaleFactor;
+    updateLayerProperties(layer.id, { scale: Math.max(0.01, newScale) });
+}
     function startLayerRotation(startAngle) { if (!selectedLayer.value) return; workspace.transformStart.rotation = startAngle; workspace.transformStart.layerRotation = selectedLayer.value.rotation; }
     function updateLayerRotation(currentAngle) { if (!selectedLayer.value) return; const { transformStart } = workspace; const angleDiff = currentAngle - transformStart.rotation; updateLayerProperties(selectedLayer.value.id, { rotation: transformStart.layerRotation + angleDiff }); }
     function deleteLayer(id) { const index = layers.value.findIndex((l) => l.id === id); if (index > -1) { globalHistoryStore.addState(getClonedGlobalState(), `Apagar Camada: ${layers.value[index].name}`); const layerToDelete = layers.value[index]; if (layerToDelete.imageUrl && layerToDelete.imageUrl.startsWith('blob:')) { URL.revokeObjectURL(layerToDelete.imageUrl); } layers.value.splice(index, 1); layerHistoryStore.clearLayerHistory(id); if (selectedLayerId.value === id) { selectedLayerId.value = layers.value.length > 0 ? layers.value[Math.min(index, layers.value.length - 1)].id : null; } } }
@@ -1188,7 +1209,7 @@ async function vectorizeLayer(layerId) {
         const imageDataUrl = tempCanvas.toDataURL('image/png');
 
         const response = await fetch('http://127.0.0.1:8000/', {
-            method: 'POST',
+            method: 'POST', // Garantindo que o método está correto
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageDataUrl }),
         });
@@ -1210,30 +1231,35 @@ async function vectorizeLayer(layerId) {
         const svgWidth = parseFloat(svgEl.getAttribute("width"));
         const svgHeight = parseFloat(svgEl.getAttribute("height"));
 
-        // Mapeia os caminhos para o novo formato de objeto
-        const paths = Array.from(pathEls).map(p => ({
-          d: p.getAttribute("d") || '',
-          transform: { dx: 0, dy: 0 } // Cada traço tem sua própria transformação
-        }));
+        const vectorFolder = createFolder(`${sourceLayer.name} (Vetorizado)`);
 
-        const newLayer = createLayerObject(`${sourceLayer.name} (Esqueleto)`, 'vector', null, {
-            ...sourceLayer.metadata,
-            originalWidth: svgWidth,
-            originalHeight: svgHeight,
+        pathEls.forEach((pathEl, index) => {
+            const pathData = pathEl.getAttribute("d") || '';
+            const newLayer = createLayerObject(`${sourceLayer.name} Vetor ${index + 1}`, 'vector', null, {
+                ...sourceLayer.metadata,
+                originalWidth: svgWidth,
+                originalHeight: svgHeight,
+            });
+            newLayer.x = sourceLayer.x;
+            newLayer.y = sourceLayer.y;
+            newLayer.scale = sourceLayer.scale * (sourceLayer.metadata.originalWidth / svgWidth);
+            newLayer.rotation = sourceLayer.rotation;
+            newLayer.pathData = pathData;
+            newLayer.strokeWidth = 10;
+            layers.value.push(newLayer);
+            moveLayerToFolder(newLayer.id, vectorFolder.id);
         });
-        newLayer.x = sourceLayer.x;
-        newLayer.y = sourceLayer.y;
-        newLayer.scale = sourceLayer.scale * (sourceLayer.metadata.originalWidth / svgWidth);
-        newLayer.rotation = sourceLayer.rotation;
-        newLayer.paths = paths; // Salva o array de objetos de traço
 
-        layers.value.push(newLayer);
-        selectLayer(newLayer.id);
-        globalHistoryStore.addState(getClonedGlobalState(), `Esqueletizar Camada: ${sourceLayer.name}`);
-        console.log('%c[canvasStore] Camada de esqueleto (Python Local) criada com sucesso!', 'color: #28a745; font-weight: bold;');
+        if (layers.value.length > 0) {
+            selectLayer(layers.value[layers.value.length - 1].id);
+        }
+
+        globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar ${sourceLayer.name}`);
+
+        console.log(`%c[canvasStore] ${pathEls.length} camadas de vetor criadas e agrupadas com sucesso!`, 'color: #28a745; font-weight: bold;');
 
     } catch (error) {
-        console.error('%c[canvasStore] FALHA AO ESQUELETIZAR (Python Local):', 'color: #ff0000; font-weight: bold;', error);
+        console.error('%c[canvasStore] FALHA AO VETORIZAR (Python Local):', 'color: #ff0000; font-weight: bold;', error);
         alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
     }
   }

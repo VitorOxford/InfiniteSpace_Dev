@@ -245,9 +245,12 @@ function isLayerDraggable(layer) {
 
           <div v-for="(layer) in unfiledLayers" :key="`layer-${layer.id}`" class="layer-item-wrapper" :draggable="isLayerDraggable(layer)" @dragstart="handleDragStart($event, layer)" @dragover.prevent @drop.stop="handleDropOnLayer($event, layer)" @touchstart="handleTouchStart($event, layer)" :data-layer-id="layer.id">
             <div class="layer-item" :class="{ active: store.selectedLayerId === layer.id }" @click="store.selectLayer(layer.id)" @contextmenu="handleContextMenu($event, layer)">
-              <div class="layer-thumbnail">
-                <img v-if="layer.imageUrl" :src="layer.imageUrl" :alt="layer.name" />
-              </div>
+ <div class="layer-thumbnail">
+  <img v-if="layer.imageUrl && layer.type !== 'vector'" :src="layer.imageUrl" :alt="layer.name" />
+  <svg v-else-if="layer.type === 'vector'" viewBox="0 0 24 24" class="vector-icon">
+    <path d="M12 2L6.5 21.5M21.5 21.5 12 2M2 12h20"></path>
+  </svg>
+</div>
               <span class="layer-name">{{ layer.name }}</span>
               <div class="layer-actions">
                 <button @click.stop="toggleVisibility(layer)" title="Mostrar/Ocultar Camada">
@@ -603,5 +606,14 @@ function isLayerDraggable(layer) {
 .slide-fade-enter-active .folder-content-inner,
 .slide-fade-leave-active .folder-content-inner {
     overflow: hidden;
+}
+
+.vector-icon {
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  stroke: var(--c-text-tertiary);
+  stroke-width: 2;
+  fill: none;
 }
 </style>

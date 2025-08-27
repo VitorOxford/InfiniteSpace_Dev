@@ -12,6 +12,7 @@ const props = defineProps({
 const store = useCanvasStore();
 
 const containerStyle = computed(() => {
+  // ... (código do containerStyle permanece o mesmo)
   const { pan, zoom } = store.workspace;
   const { x, y, scale, rotation, metadata } = props.layer;
 
@@ -43,10 +44,9 @@ const containerStyle = computed(() => {
       preserveAspectRatio="xMidYMid meet"
     >
       <path
-        v-for="(path, index) in layer.paths"
-        :key="index"
-        :d="path"
+        :d="layer.pathData"
         class="vector-path"
+        :style="{ strokeWidth: layer.strokeWidth || 2 }"
       />
     </svg>
   </div>
@@ -56,8 +56,8 @@ const containerStyle = computed(() => {
 .vector-path {
   fill: none;
   stroke: v-bind('store.primaryColor');
+  /* stroke-width é agora um estilo inline, mas mantemos um fallback */
   stroke-width: 2;
-  /* Garante que a espessura do contorno não aumente com o zoom */
   vector-effect: non-scaling-stroke;
 }
 </style>
