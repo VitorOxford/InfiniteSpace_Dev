@@ -6,7 +6,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
-import { vectorizeCanvas } from '@/utils/vectorizer'
+// Apague a importação do vectorizer local, não precisamos mais dele
+// import { vectorizeCanvas } from '@/utils/vectorizer'
 
 
 async function normalizeImage(imageUrl) {
@@ -283,15 +284,20 @@ export const useCanvasStore = defineStore('canvas', () => {
       y: 0,
       scale: 1,
       rotation: 0,
-      metadata: { ...metadata, dpi: metadata?.dpi || 96, originalWidth: 0, originalHeight: 0 },
+      metadata: {
+        dpi: metadata?.dpi || 96,
+        originalWidth: 0,
+        originalHeight: 0,
+        ...metadata
+      },
       originalFile: null,
       adjustments: {
         grayscale: 0, sepia: 0, saturate: 100,
         contrast: 100, brightness: 100, invert: 0,
         flipH: false, flipV: false,
       },
-      path: type === 'vector' ? [] : undefined, // Propriedade para camadas de vetor
-      pathData: type === 'vector' ? '' : undefined, // Propriedade para o caminho SVG
+      path: type === 'vector' ? [] : undefined,
+      pathData: type === 'vector' ? '' : undefined,
       version: 1,
     })
   }
@@ -1118,91 +1124,69 @@ function createDrawingLayer() {
     selectLayer(newLayer.id);
     layerHistoryStore.addLayerState(newLayer.id, getClonedLayerState(newLayer), 'Criação da Camada de Desenho');
     globalHistoryStore.addState(getClonedGlobalState(), 'Adicionar Camada de Desenho');
-    return newLayer; // Importante para que CanvasArea.vue possa usar a nova camada imediatamente
-}
-
-// --- NOVA LÓGICA PARA VETORIZAÇÃO ---
-function createVectorLayer() {
-    const newLayer = createLayerObject('Camada de Vetor', 'vector', null);
-    layers.value.push(newLayer);
-    selectLayer(newLayer.id);
-    globalHistoryStore.addState(getClonedGlobalState(), 'Adicionar Camada de Vetor');
     return newLayer;
 }
 
+// --- FUNÇÃO DE VETORIZAÇÃO MODIFICADA ---
 async function vectorizeLayer(layerId) {
-  console.log('%c[canvasStore] Iniciando o processo de vetorização...', 'color: #00aaff; font-weight: bold;');
+    console.log('%c[canvasStore] Iniciando o processo de vetorização via Supabase...', 'color: #00aaff; font-weight: bold;');
 
-  const sourceLayer = layers.value.find(l => l.id === layerId);
-  if (!sourceLayer || (!sourceLayer.image && !sourceLayer.fullResImage)) {
-    console.error('[canvasStore] Erro: Camada de origem não encontrada ou não contém imagem.');
-    alert('A camada selecionada não contém uma imagem para vetorizar.');
-    return;
-  }
-  console.log('[canvasStore] Camada de origem encontrada:', sourceLayer.name, sourceLayer);
-
-  try {
-    const imageToProcess = sourceLayer.fullResImage || sourceLayer.image;
-    console.log('[canvasStore] Imagem a ser processada:', imageToProcess);
-
-    if (!imageToProcess.width || !imageToProcess.height) {
-      console.error('[canvasStore] Erro: A imagem da camada não tem dimensões válidas.');
-      alert('A imagem da camada selecionada não tem dimensões válidas para vetorizar.');
-      return;
+    const sourceLayer = layers.value.find(l => l.id === layerId);
+    if (!sourceLayer || !sourceLayer.image) {
+        alert('Camada de origem não encontrada ou vazia.');
+        return;
     }
 
-    console.log(`[canvasStore] A chamar vectorizeCanvas com uma imagem de ${imageToProcess.width}x${imageToProcess.height}px.`);
-    const svgContent = await vectorizeCanvas(imageToProcess);
-    console.log('%c[canvasStore] Vetorização bem-sucedida! SVG recebido.', 'color: #00ff00; font-weight: bold;', svgContent.slice(0, 200) + '...');
+    try {
+        // 1. Desenha a imagem da camada num canvas temporário para obter o Data URL
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = sourceLayer.image.width;
+        tempCanvas.height = sourceLayer.image.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(sourceLayer.image, 0, 0);
+        const imageDataUrl = tempCanvas.toDataURL('image/png');
 
-    // Parseia SVG para extrair width, height e paths
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
-    const svgEl = svgDoc.querySelector("svg");
-    const pathEls = svgDoc.querySelectorAll("path");
+        // 2. Invoca a Supabase Function
+        const { data: svgContent, error } = await supabase.functions.invoke('vectorize-image', {
+            body: { imageDataUrl },
+        });
 
-    const svgWidth = parseFloat(svgEl.getAttribute("width")) || imageToProcess.width;
-    const svgHeight = parseFloat(svgEl.getAttribute("height")) || imageToProcess.height;
-    const paths = Array.from(pathEls).map(p => p.getAttribute("d"));
+        if (error) {
+            throw error;
+        }
 
-    if (paths.length === 0) {
-      console.warn('[canvasStore] Aviso: nenhum path encontrado no SVG.');
-      alert('A vetorização não gerou nenhum path. Verifique a imagem ou os parâmetros.');
+        // 3. Processa a resposta SVG
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
+        const svgEl = svgDoc.querySelector("svg");
+        const pathEls = svgDoc.querySelectorAll("path");
+
+        const svgWidth = parseFloat(svgEl.getAttribute("width")) || sourceLayer.metadata.originalWidth;
+        const svgHeight = parseFloat(svgEl.getAttribute("height")) || sourceLayer.metadata.originalHeight;
+        const paths = Array.from(pathEls).map(p => p.getAttribute("d") || '');
+
+        const newLayer = createLayerObject(`${sourceLayer.name} (Vetor)`, 'vector', null, {
+            ...sourceLayer.metadata,
+            originalWidth: svgWidth,
+            originalHeight: svgHeight,
+        });
+        newLayer.x = sourceLayer.x;
+        newLayer.y = sourceLayer.y;
+        newLayer.scale = sourceLayer.scale;
+        newLayer.rotation = sourceLayer.rotation;
+        newLayer.pathData = paths.join(' ') || '';
+
+        layers.value.push(newLayer);
+        selectLayer(newLayer.id);
+        globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar Camada: ${sourceLayer.name}`);
+
+        console.log('[canvasStore] Nova camada de vetor (esqueleto) criada com sucesso.');
+
+    } catch (error) {
+        console.error('%c[canvasStore] FALHA AO VETORIZAR COM SUPABASE FUNCTION:', 'color: #ff0000; font-weight: bold;', error);
+        alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
     }
-
-    // Cria a nova camada de vetor
-    const newLayer = createLayerObject(`${sourceLayer.name} (Vetor)`, 'vector', null, sourceLayer.metadata);
-    newLayer.x = sourceLayer.x;
-    newLayer.y = sourceLayer.y;
-    newLayer.scale = sourceLayer.scale;
-    newLayer.rotation = sourceLayer.rotation;
-    newLayer.width = svgWidth;
-    newLayer.height = svgHeight;
-    newLayer.paths = paths;
-
-    layers.value.push(newLayer);
-    selectLayer(newLayer.id);
-    globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar Camada: ${sourceLayer.name}`);
-
-    console.log('[canvasStore] Nova camada de vetor criada e adicionada com sucesso.');
-  } catch (error) {
-    console.error('%c[canvasStore] FALHA CATASTRÓFICA AO VETORIZAR:', 'color: #ff0000; font-weight: bold;', error);
-    alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
-  }
 }
-
-
-function addVectorPoint(point) {
-    let layer = selectedLayer.value;
-    if (!layer || layer.type !== 'vector') {
-        layer = createVectorLayer();
-    }
-    const originalState = getClonedLayerState(layer);
-    layer.path.push(point);
-    layer.version++;
-    commitLayerStateToHistory(layer.id, originalState, 'Adicionar Ponto Vetorial');
-}
-
 
   return {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
@@ -1221,9 +1205,8 @@ function addVectorPoint(point) {
     exportLayer,
     exportDrawnArea,
     initializeEmptyWorkspace,
-    createDrawingLayer, // --- CORREÇÃO: Exportando a função ---
-    addVectorPoint, // Exportando a nova função de vetor
-    vectorizeLayer, // Exportando a nova função de vetorização
+    createDrawingLayer,
+    vectorizeLayer, // A nova função de vetorização
     // Funções de Pastas
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
   }

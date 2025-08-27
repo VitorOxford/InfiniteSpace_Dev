@@ -1,0 +1,7 @@
+supabase-functions
+fastapi
+pydantic
+opencv-python
+numpy
+svgwrite
+Pillow
