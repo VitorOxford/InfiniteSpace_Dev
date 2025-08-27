@@ -4,6 +4,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useImageAdjustmentsStore } from '@/stores/imageAdjustmentsStore'
 import SelectionOverlay from './SelectionOverlay.vue'
 import BoundingBox from './BoundingBox.vue'
+import VectorLayer from './VectorLayer.vue' // Importa o novo componente
 
 const props = defineProps({
   isMobile: Boolean,
@@ -38,6 +39,8 @@ const gridStyle = computed(() => ({
   '--grid-position-y': `${store.workspace.pan.y}px`,
   '--grid-size': `${50 * store.workspace.zoom}px`,
 }))
+
+const vectorLayers = computed(() => store.layers.filter(l => l.type === 'vector' && l.visible));
 
 function renderCanvas() {
   if (!ctx) return
@@ -556,6 +559,7 @@ watch(() => [canvasRef.value?.parentElement?.clientWidth, canvasRef.value?.paren
         ></div>
         <canvas ref="canvasRef" id="mainCanvas"></canvas>
         <slot></slot>
+        <VectorLayer v-for="layer in vectorLayers" :key="layer.id" :layer="layer" />
         <BoundingBox v-if="store.selectedLayer" @handle-mouse-down="onHandleMouseDown" />
         <SelectionOverlay />
     </div>

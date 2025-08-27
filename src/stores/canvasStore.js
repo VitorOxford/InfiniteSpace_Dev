@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
+import { vectorizeCanvas } from '@/utils/vectorizer'
 
 
 async function normalizeImage(imageUrl) {
@@ -290,6 +291,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         flipH: false, flipV: false,
       },
       path: type === 'vector' ? [] : undefined, // Propriedade para camadas de vetor
+      pathData: type === 'vector' ? '' : undefined, // Propriedade para o caminho SVG
       version: 1,
     })
   }
@@ -1128,6 +1130,43 @@ function createVectorLayer() {
     return newLayer;
 }
 
+async function vectorizeLayer(layerId) {
+  const sourceLayer = layers.value.find(l => l.id === layerId);
+  if (!sourceLayer || !sourceLayer.image) {
+    alert('A camada selecionada não contém uma imagem para vetorizar.');
+    return;
+  }
+
+  try {
+    // --- INÍCIO DA CORREÇÃO ---
+    // Garante que estamos a trabalhar com um elemento canvas
+    const imageToProcess = sourceLayer.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = imageToProcess.width;
+    canvas.height = imageToProcess.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imageToProcess, 0, 0);
+    // --- FIM DA CORREÇÃO ---
+
+    const pathData = await vectorizeCanvas(canvas); // Agora enviamos o canvas
+
+    const newLayer = createLayerObject(`${sourceLayer.name} (Vetor)`, 'vector', null, sourceLayer.metadata);
+    newLayer.x = sourceLayer.x;
+    newLayer.y = sourceLayer.y;
+    newLayer.scale = sourceLayer.scale;
+    newLayer.rotation = sourceLayer.rotation;
+    newLayer.pathData = pathData;
+
+    layers.value.push(newLayer);
+    selectLayer(newLayer.id);
+    globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar Camada: ${sourceLayer.name}`);
+
+  } catch (error) {
+    console.error('Falha ao vetorizar:', error);
+    alert('Ocorreu um erro durante a vetorização.');
+  }
+}
+
 function addVectorPoint(point) {
     let layer = selectedLayer.value;
     if (!layer || layer.type !== 'vector') {
@@ -1159,6 +1198,7 @@ function addVectorPoint(point) {
     initializeEmptyWorkspace,
     createDrawingLayer, // --- CORREÇÃO: Exportando a função ---
     addVectorPoint, // Exportando a nova função de vetor
+    vectorizeLayer, // Exportando a nova função de vetorização
     // Funções de Pastas
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
   }

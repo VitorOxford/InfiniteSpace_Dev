@@ -16,6 +16,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
     "html2canvas": "^1.4.1",
+    "imagetracerjs": "^1.2.6",
     "jspdf": "^2.5.1",
     "jszip": "^3.10.1",
     "pinia": "^2.1.7",
