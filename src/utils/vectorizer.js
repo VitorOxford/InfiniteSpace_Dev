@@ -1,50 +1,75 @@
 // src/utils/vectorizer.js
-import ImageTracer from 'imagetracerjs';
+import { potrace, init } from "esm-potrace-wasm";
+
+let potraceReady = false;
 
 /**
- * Vetoriza uma imagem a partir de um canvas ou ImageBitmap.
+ * Vetoriza uma imagem usando a biblioteca esm-potrace-wasm.
  * @param {HTMLCanvasElement | ImageBitmap} image - A imagem a ser vetorizada.
- * @returns {Promise<string>} Uma promessa que resolve com o caminho SVG.
+ * @returns {Promise<string>} SVG completo em string.
  */
-export function vectorizeCanvas(image) {
-  return new Promise((resolve, reject) => {
-    try {
-      // 1. Prepara um canvas com fundo branco para garantir o contraste.
-      const canvas = document.createElement('canvas');
-      canvas.width = image.width;
-      canvas.height = image.height;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
+export async function vectorizeCanvas(image) {
+  console.log("[vectorizer] A usar o motor ESM-POTRACE-WASM.");
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-      // 2. Opções de vetorização otimizadas para logotipos (preto e branco).
-      const options = {
-        numberofcolors: 2, // Força a imagem a ter apenas 2 cores (preto e branco)
-        mincolorratio: 0.02,
-        ltres: 1,
-        qtres: 1,
-      };
-
-      // 3. Usa o método assíncrono da biblioteca, que é mais robusto.
-      ImageTracer.imageToTracedata(imageData, (tracedata) => {
-          // 4. Converte os dados do traçado para uma string SVG.
-          const svgData = ImageTracer.getSvgString(tracedata, { viewbox: true });
-
-          // 5. Extrai o caminho 'd' da string SVG.
-          const match = svgData.match(/d="([^"]+)"/);
-          if (match && match[1]) {
-            resolve(match[1]);
-          } else {
-            reject(new Error('Vetorização não produziu um caminho válido. A imagem pode ser de cor única.'));
-          }
-        },
-        options
-      );
-    } catch (error) {
-      reject(error);
+  try {
+    // garante init do WASM apenas uma vez
+    if (!potraceReady) {
+      console.log("[vectorizer] Inicializando WASM...");
+      await init();
+      potraceReady = true;
+      console.log("[vectorizer] WASM pronto!");
     }
-  });
+
+    // cria canvas auxiliar
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // downscale opcional (máx 1024 px, pode aumentar/diminuir)
+    const maxSize = 1024;
+    const scale = Math.min(maxSize / image.width, maxSize / image.height, 1);
+    canvas.width = Math.floor(image.width * scale);
+    canvas.height = Math.floor(image.height * scale);
+
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    // garante grayscale (potrace trabalha melhor assim)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+      data[i] = data[i + 1] = data[i + 2] = gray;
+      data[i + 3] = 255; // força opacidade total
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    console.log(
+      `[vectorizer] A enviar ImageData (${canvas.width}x${canvas.height}) para o motor potrace...`
+    );
+
+    // chamada real ao potrace
+    const svgContent = await potrace(imageData, {
+      turdSize: 2,         // ignora só ruído pequeno
+      threshold: 180,      // sensibilidade ao contraste
+      turnPolicy: "minority"
+    });
+
+    console.log(
+      "%c[vectorizer] Potrace-WASM retornou o SVG com sucesso!",
+      "color: #00ff00; font-weight: bold;"
+    );
+
+    console.log("[vectorizer] SVG gerado:", svgContent.slice(0, 200) + "...");
+
+    // retorna o SVG inteiro (com <svg>, width, height, path etc.)
+    return svgContent;
+
+  } catch (error) {
+    console.error(
+      "%c[vectorizer] ERRO no motor Potrace-WASM:",
+      "color: #ff0000; font-weight: bold;",
+      error?.message,
+      error
+    );
+    throw new Error("Ocorreu um erro durante o processo de vetorização.");
+  }
 }

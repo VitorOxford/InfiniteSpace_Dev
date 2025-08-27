@@ -1131,41 +1131,66 @@ function createVectorLayer() {
 }
 
 async function vectorizeLayer(layerId) {
+  console.log('%c[canvasStore] Iniciando o processo de vetorização...', 'color: #00aaff; font-weight: bold;');
+
   const sourceLayer = layers.value.find(l => l.id === layerId);
-  if (!sourceLayer || !sourceLayer.image) {
+  if (!sourceLayer || (!sourceLayer.image && !sourceLayer.fullResImage)) {
+    console.error('[canvasStore] Erro: Camada de origem não encontrada ou não contém imagem.');
     alert('A camada selecionada não contém uma imagem para vetorizar.');
     return;
   }
+  console.log('[canvasStore] Camada de origem encontrada:', sourceLayer.name, sourceLayer);
 
   try {
-    // --- INÍCIO DA CORREÇÃO ---
-    // Garante que estamos a trabalhar com um elemento canvas
-    const imageToProcess = sourceLayer.image;
-    const canvas = document.createElement('canvas');
-    canvas.width = imageToProcess.width;
-    canvas.height = imageToProcess.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(imageToProcess, 0, 0);
-    // --- FIM DA CORREÇÃO ---
+    const imageToProcess = sourceLayer.fullResImage || sourceLayer.image;
+    console.log('[canvasStore] Imagem a ser processada:', imageToProcess);
 
-    const pathData = await vectorizeCanvas(canvas); // Agora enviamos o canvas
+    if (!imageToProcess.width || !imageToProcess.height) {
+      console.error('[canvasStore] Erro: A imagem da camada não tem dimensões válidas.');
+      alert('A imagem da camada selecionada não tem dimensões válidas para vetorizar.');
+      return;
+    }
 
+    console.log(`[canvasStore] A chamar vectorizeCanvas com uma imagem de ${imageToProcess.width}x${imageToProcess.height}px.`);
+    const svgContent = await vectorizeCanvas(imageToProcess);
+    console.log('%c[canvasStore] Vetorização bem-sucedida! SVG recebido.', 'color: #00ff00; font-weight: bold;', svgContent.slice(0, 200) + '...');
+
+    // Parseia SVG para extrair width, height e paths
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
+    const svgEl = svgDoc.querySelector("svg");
+    const pathEls = svgDoc.querySelectorAll("path");
+
+    const svgWidth = parseFloat(svgEl.getAttribute("width")) || imageToProcess.width;
+    const svgHeight = parseFloat(svgEl.getAttribute("height")) || imageToProcess.height;
+    const paths = Array.from(pathEls).map(p => p.getAttribute("d"));
+
+    if (paths.length === 0) {
+      console.warn('[canvasStore] Aviso: nenhum path encontrado no SVG.');
+      alert('A vetorização não gerou nenhum path. Verifique a imagem ou os parâmetros.');
+    }
+
+    // Cria a nova camada de vetor
     const newLayer = createLayerObject(`${sourceLayer.name} (Vetor)`, 'vector', null, sourceLayer.metadata);
     newLayer.x = sourceLayer.x;
     newLayer.y = sourceLayer.y;
     newLayer.scale = sourceLayer.scale;
     newLayer.rotation = sourceLayer.rotation;
-    newLayer.pathData = pathData;
+    newLayer.width = svgWidth;
+    newLayer.height = svgHeight;
+    newLayer.paths = paths;
 
     layers.value.push(newLayer);
     selectLayer(newLayer.id);
     globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar Camada: ${sourceLayer.name}`);
 
+    console.log('[canvasStore] Nova camada de vetor criada e adicionada com sucesso.');
   } catch (error) {
-    console.error('Falha ao vetorizar:', error);
-    alert('Ocorreu um erro durante a vetorização.');
+    console.error('%c[canvasStore] FALHA CATASTRÓFICA AO VETORIZAR:', 'color: #ff0000; font-weight: bold;', error);
+    alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
   }
 }
+
 
 function addVectorPoint(point) {
     let layer = selectedLayer.value;
