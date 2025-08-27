@@ -1,33 +1,21 @@
 # supabase/functions/vectorize-image/index.py
-
-import base64
-import cv2
-import numpy as np
-import svgwrite
-from fastapi import FastAPI, Request
+import base64, cv2, numpy as np, svgwrite, io
+from fastapi import FastAPI
 from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel
 from PIL import Image
-import io
-# Importa o middleware de CORS
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware # Importa o Middleware
 
 app = FastAPI()
 
-# --- CORREÇÃO DEFINITIVA DE CORS ---
-# Adiciona o middleware à sua aplicação.
-# Isto irá automaticamente lidar com os pedidos OPTIONS (preflight)
-# e adicionar os cabeçalhos corretos a TODAS as respostas.
-
+# Adiciona o middleware de CORS para permitir todas as origens
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite pedidos de qualquer origem (localhost, etc.)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"], # Permite os métodos POST e OPTIONS
-    allow_headers=["*"], # Permite todos os cabeçalhos
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-# --- FIM DA CORREÇÃO ---
-
 
 class ImagePayload(BaseModel):
     imageDataUrl: str
@@ -41,43 +29,34 @@ def create_svg_from_skeleton(skeleton_image):
         dwg.add(dwg.path(d=path_data, fill="none", stroke="black", stroke_width=2))
     return dwg.tostring()
 
-# Removemos a rota OPTIONS manual, o middleware já trata disso.
 @app.post("/")
 async def vectorize_image(payload: ImagePayload):
     try:
         image_data_base64 = payload.imageDataUrl.split(',')[1]
         image_bytes = base64.b64decode(image_data_base64)
-        
-        pil_image = Image.open(io.BytesIO(image_bytes)).convert('L')
-        img = np.array(pil_image)
-        
-        # Garante fundo branco para o processamento
+        pil_image = Image.open(io.BytesIO(image_bytes))
+
         if pil_image.mode == 'RGBA':
-             # Cria um fundo branco
             bg = Image.new('RGB', pil_image.size, (255, 255, 255))
-            # Cola a imagem com transparência sobre o fundo branco
             bg.paste(pil_image, (0, 0), pil_image)
-            img = np.array(bg.convert('L'))
+            img_cv = np.array(bg)
+        else:
+            img_cv = np.array(pil_image.convert('RGB'))
 
-        img_inverted = cv2.bitwise_not(img)
+        img_gray = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
+        img_inverted = cv2.bitwise_not(img_gray)
         _, img_thresh = cv2.threshold(img_inverted, 127, 255, cv2.THRESH_BINARY)
-
         skeleton = np.zeros(img_thresh.shape, np.uint8)
         element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3,3))
-        
+
         while cv2.countNonZero(img_thresh) != 0:
             eroded = cv2.erode(img_thresh, element)
             temp = cv2.dilate(eroded, element)
             temp = cv2.subtract(img_thresh, temp)
             skeleton = cv2.bitwise_or(skeleton, temp)
             img_thresh = eroded.copy()
-        
+
         svg_string = create_svg_from_skeleton(skeleton)
-
-        # O middleware já adiciona os cabeçalhos CORS automaticamente
         return Response(content=svg_string, media_type="image/svg+xml")
-
     except Exception as e:
-        print(f"ERROR: {e}")
-        # O middleware também adiciona os cabeçalhos em caso de erro
         return JSONResponse(content={"detail": str(e)}, status_code=500)

@@ -6,9 +6,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
-// Apague a importação do vectorizer local, não precisamos mais dele
-// import { vectorizeCanvas } from '@/utils/vectorizer'
-
 
 async function normalizeImage(imageUrl) {
   return new Promise((resolve, reject) => {
@@ -40,6 +37,15 @@ export const useCanvasStore = defineStore('canvas', () => {
   const selectedLayerId = ref(null)
   const activeTool = ref('move')
   const primaryColor = ref('#000000')
+
+   const selectedPath = reactive({
+    layerId: null,
+    pathIndex: null,
+  });
+  const isDraggingPath = ref(false);
+  let pathDragStart = { x: 0, y: 0 };
+  let pathOriginalTransform = { dx: 0, dy: 0 };
+
 
   const brush = reactive({ size: 20, opacity: 1, hardness: 0.9 });
   const eraser = reactive({ size: 40, opacity: 1 });
@@ -223,7 +229,6 @@ export const useCanvasStore = defineStore('canvas', () => {
       thumbCanvas.getContext('2d').drawImage(layer.image, 0, 0, thumbCanvas.width, thumbCanvas.height);
       layer.imageUrl = thumbCanvas.toDataURL();
     } else if (layer && layer.type === 'vector') {
-        // Thumbnail para camadas de vetor pode ser implementado aqui
         layer.imageUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMiAxLjY3YTEgMSAwIDAgMSAwuMy43bDUgNWExIDEgMCAwIDEgMCAxLjQybC05IDlhMSAxIDAgMCAxLTEuNDIgMGwtNSA1YTEgMSAwIDAgMSAwLTEuNDJsOS05YTEgMSAwIDAgMSAuNzItLjN6IE0xMiAzLjA4TDQuMDggMTEgOSAxNS45MiAxNyA4bC01LTV6IE01LjUgMTIuNDJsNCA0TDEwLjkxIDE3LjkxIDE3LjkxIDEwLjkxIDUuNSAxMi40MnoiLz48L3N2Zz4=';
     }
   }
@@ -296,10 +301,49 @@ export const useCanvasStore = defineStore('canvas', () => {
         contrast: 100, brightness: 100, invert: 0,
         flipH: false, flipV: false,
       },
-      path: type === 'vector' ? [] : undefined,
-      pathData: type === 'vector' ? '' : undefined,
+      paths: type === 'vector' ? [] : undefined,
+      pathData: undefined,
       version: 1,
     })
+  }
+
+  function startPathDrag(layerId, pathIndex, startCoords) {
+    if (activeTool.value !== 'move' || selectedLayerId.value !== layerId) return;
+
+    isDraggingPath.value = true;
+    selectedPath.layerId = layerId;
+    selectedPath.pathIndex = pathIndex;
+
+    const layer = layers.value.find(l => l.id === layerId);
+    if (layer && layer.paths[pathIndex]) {
+      pathOriginalTransform = { ...layer.paths[pathIndex].transform };
+    }
+    pathDragStart = startCoords;
+  }
+
+  function updatePathDrag(currentCoords) {
+    if (!isDraggingPath.value || selectedPath.layerId === null || selectedPath.pathIndex === null) return;
+
+    const layer = layers.value.find(l => l.id === selectedPath.layerId);
+    if (!layer || !layer.paths[selectedPath.pathIndex]) return;
+
+    // Calcula o deslocamento no espaço do mundo (sem zoom)
+    const dx = (currentCoords.x - pathDragStart.x) / workspace.zoom;
+    const dy = (currentCoords.y - pathDragStart.y) / workspace.zoom;
+
+    // Aplica o deslocamento à transformação original do traço
+    layer.paths[selectedPath.pathIndex].transform.dx = pathOriginalTransform.dx + dx;
+    layer.paths[selectedPath.pathIndex].transform.dy = pathOriginalTransform.dy + dy;
+    layer.version++; // Força a re-renderização
+  }
+
+  function endPathDrag() {
+    if (isDraggingPath.value) {
+      // Aqui você pode adicionar um estado ao histórico se desejar
+      isDraggingPath.value = false;
+      selectedPath.layerId = null;
+      selectedPath.pathIndex = null;
+    }
   }
 
   async function processAndAddLayer(newLayerData) {
@@ -349,7 +393,6 @@ export const useCanvasStore = defineStore('canvas', () => {
         alert("Houve um erro ao carregar a imagem. Tente novamente.");
       }
     } else {
-        // Para camadas sem imagem inicial (como vetor ou desenho)
         finalizeLayerAddition(newLayer, initialPosition, initialScale);
     }
   }
@@ -586,7 +629,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     function setPreviewZoom(zoom) { workspace.previewZoom = zoom; }
     function selectLayer(id) { selectedLayerId.value = id; }
     function startLayerResize(mousePos, initialScale) { if (!selectedLayer.value) return; workspace.transformStart.mousePos = mousePos; workspace.transformStart.scale = initialScale; workspace.transformStart.layerCenter = { x: selectedLayer.value.x, y: selectedLayer.value.y }; }
-    function updateLayerResize(mousePos) { if (!selectedLayer.value) return; const { transformStart, pan, zoom } = workspace; const layer = selectedLayer.value; const centerScreenX = transformStart.layerCenter.x * zoom + pan.x; const centerScreenY = transformStart.layerCenter.y * zoom + pan.y; const initialDx = transformStart.mousePos.x - centerScreenX; const initialDy = transformStart.mousePos.y - centerScreenY; const initialDist = Math.sqrt(initialDx * initialDx + initialDy * initialDy); const currentDx = mousePos.x - centerScreenX; const currentDy = mousePos.y - centerScreenY; const currentDist = Math.sqrt(currentDx * currentDx + currentDy * currentDy); if (initialDist === 0) return; const scaleFactor = currentDist / initialDist; const newScale = transformStart.scale * scaleFactor; updateLayerProperties(layer.id, { scale: Math.max(0.01, newScale) }); }
+    function updateLayerResize(mousePos) { if (!selectedLayer.value) return; const { transformStart, pan, zoom } = workspace; const layer = selectedLayer.value; const centerScreenX = transformStart.layerCenter.x * zoom + pan.x; const centerScreenY = transformStart.layerCenter.y * zoom + pan.y; const initialDx = transformStart.mousePos.x - centerScreenX; const initialDy = transformStart.mousePos.y - centerScreenY; const initialDist = Math.sqrt(initialDx * initialDx + initialDy * initialDy); const currentDx = mouse.x - centerScreenX; const currentDy = mouse.y - centerScreenY; const currentDist = Math.sqrt(currentDx * currentDx + currentDy * currentDy); if (initialDist === 0) return; const scaleFactor = currentDist / initialDist; const newScale = transformStart.scale * scaleFactor; updateLayerProperties(layer.id, { scale: Math.max(0.01, newScale) }); }
     function startLayerRotation(startAngle) { if (!selectedLayer.value) return; workspace.transformStart.rotation = startAngle; workspace.transformStart.layerRotation = selectedLayer.value.rotation; }
     function updateLayerRotation(currentAngle) { if (!selectedLayer.value) return; const { transformStart } = workspace; const angleDiff = currentAngle - transformStart.rotation; updateLayerProperties(selectedLayer.value.id, { rotation: transformStart.layerRotation + angleDiff }); }
     function deleteLayer(id) { const index = layers.value.findIndex((l) => l.id === id); if (index > -1) { globalHistoryStore.addState(getClonedGlobalState(), `Apagar Camada: ${layers.value[index].name}`); const layerToDelete = layers.value[index]; if (layerToDelete.imageUrl && layerToDelete.imageUrl.startsWith('blob:')) { URL.revokeObjectURL(layerToDelete.imageUrl); } layers.value.splice(index, 1); layerHistoryStore.clearLayerHistory(id); if (selectedLayerId.value === id) { selectedLayerId.value = layers.value.length > 0 ? layers.value[Math.min(index, layers.value.length - 1)].id : null; } } }
@@ -1127,9 +1170,8 @@ function createDrawingLayer() {
     return newLayer;
 }
 
-// --- FUNÇÃO DE VETORIZAÇÃO MODIFICADA ---
 async function vectorizeLayer(layerId) {
-    console.log('%c[canvasStore] Iniciando o processo de vetorização via Supabase...', 'color: #00aaff; font-weight: bold;');
+    console.log('%c[canvasStore] Iniciando vetorização com servidor Python local direto...', 'color: #28a745; font-weight: bold;');
 
     const sourceLayer = layers.value.find(l => l.id === layerId);
     if (!sourceLayer || !sourceLayer.image) {
@@ -1138,7 +1180,6 @@ async function vectorizeLayer(layerId) {
     }
 
     try {
-        // 1. Desenha a imagem da camada num canvas temporário para obter o Data URL
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = sourceLayer.image.width;
         tempCanvas.height = sourceLayer.image.height;
@@ -1146,47 +1187,56 @@ async function vectorizeLayer(layerId) {
         tempCtx.drawImage(sourceLayer.image, 0, 0);
         const imageDataUrl = tempCanvas.toDataURL('image/png');
 
-        // 2. Invoca a Supabase Function
-        const { data: svgContent, error } = await supabase.functions.invoke('vectorize-image', {
-            body: { imageDataUrl },
+        const response = await fetch('http://127.0.0.1:8000/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageDataUrl }),
         });
 
-        if (error) {
-            throw error;
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ detail: `Erro no servidor Python: ${response.statusText}` }));
+            throw new Error(errorBody.detail);
         }
 
-        // 3. Processa a resposta SVG
+        const svgContent = await response.text();
+
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
         const svgEl = svgDoc.querySelector("svg");
         const pathEls = svgDoc.querySelectorAll("path");
 
-        const svgWidth = parseFloat(svgEl.getAttribute("width")) || sourceLayer.metadata.originalWidth;
-        const svgHeight = parseFloat(svgEl.getAttribute("height")) || sourceLayer.metadata.originalHeight;
-        const paths = Array.from(pathEls).map(p => p.getAttribute("d") || '');
+        if (!svgEl || !pathEls.length) throw new Error("Vetorização não retornou um SVG válido.");
 
-        const newLayer = createLayerObject(`${sourceLayer.name} (Vetor)`, 'vector', null, {
+        const svgWidth = parseFloat(svgEl.getAttribute("width"));
+        const svgHeight = parseFloat(svgEl.getAttribute("height"));
+
+        // Mapeia os caminhos para o novo formato de objeto
+        const paths = Array.from(pathEls).map(p => ({
+          d: p.getAttribute("d") || '',
+          transform: { dx: 0, dy: 0 } // Cada traço tem sua própria transformação
+        }));
+
+        const newLayer = createLayerObject(`${sourceLayer.name} (Esqueleto)`, 'vector', null, {
             ...sourceLayer.metadata,
             originalWidth: svgWidth,
             originalHeight: svgHeight,
         });
         newLayer.x = sourceLayer.x;
         newLayer.y = sourceLayer.y;
-        newLayer.scale = sourceLayer.scale;
+        newLayer.scale = sourceLayer.scale * (sourceLayer.metadata.originalWidth / svgWidth);
         newLayer.rotation = sourceLayer.rotation;
-        newLayer.pathData = paths.join(' ') || '';
+        newLayer.paths = paths; // Salva o array de objetos de traço
 
         layers.value.push(newLayer);
         selectLayer(newLayer.id);
-        globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar Camada: ${sourceLayer.name}`);
-
-        console.log('[canvasStore] Nova camada de vetor (esqueleto) criada com sucesso.');
+        globalHistoryStore.addState(getClonedGlobalState(), `Esqueletizar Camada: ${sourceLayer.name}`);
+        console.log('%c[canvasStore] Camada de esqueleto (Python Local) criada com sucesso!', 'color: #28a745; font-weight: bold;');
 
     } catch (error) {
-        console.error('%c[canvasStore] FALHA AO VETORIZAR COM SUPABASE FUNCTION:', 'color: #ff0000; font-weight: bold;', error);
+        console.error('%c[canvasStore] FALHA AO ESQUELETIZAR (Python Local):', 'color: #ff0000; font-weight: bold;', error);
         alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
     }
-}
+  }
 
   return {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
@@ -1206,8 +1256,7 @@ async function vectorizeLayer(layerId) {
     exportDrawnArea,
     initializeEmptyWorkspace,
     createDrawingLayer,
-    vectorizeLayer, // A nova função de vetorização
-    // Funções de Pastas
+    vectorizeLayer,
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
   }
 })

@@ -43,7 +43,9 @@ const containerStyle = computed(() => {
       preserveAspectRatio="xMidYMid meet"
     >
       <path
-        :d="layer.pathData"
+        v-for="(path, index) in layer.paths"
+        :key="index"
+        :d="path"
         class="vector-path"
       />
     </svg>
@@ -51,23 +53,11 @@ const containerStyle = computed(() => {
 </template>
 
 <style scoped>
-.vector-layer-container {
-  /* Estilos para o container, se necessário */
-}
-
 .vector-path {
-  /* --- A MÁGICA ACONTECE AQUI --- */
-
-  /* 1. Removemos o preenchimento. O vetor não será mais um borrão sólido. */
   fill: none;
-
-  /* 2. Definimos a cor do contorno para ser a cor primária selecionada. */
   stroke: v-bind('store.primaryColor');
-
-  /* 3. Definimos uma espessura para o contorno ser visível. */
   stroke-width: 2;
-
-  /* 4. Isso garante que a espessura do contorno não aumente com o zoom. */
+  /* Garante que a espessura do contorno não aumente com o zoom */
   vector-effect: non-scaling-stroke;
 }
 </style>
