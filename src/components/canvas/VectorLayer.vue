@@ -3,29 +3,22 @@ import { computed } from 'vue';
 import { useCanvasStore } from '@/stores/canvasStore';
 
 const props = defineProps({
-  layer: {
-    type: Object,
-    required: true,
-  },
+  layer: { type: Object, required: true }
 });
 
 const store = useCanvasStore();
 
 const containerStyle = computed(() => {
-  // ... (código do containerStyle permanece o mesmo)
   const { pan, zoom } = store.workspace;
   const { x, y, scale, rotation, metadata } = props.layer;
 
   const width = (metadata.originalWidth || 0) * scale * zoom;
   const height = (metadata.originalHeight || 0) * scale * zoom;
 
-  const translateX = x * zoom + pan.x - width / 2;
-  const translateY = y * zoom + pan.y - height / 2;
-
   return {
     position: 'absolute',
-    top: `${translateY}px`,
-    left: `${translateX}px`,
+    top: `${y*zoom + pan.y - height/2}px`,
+    left: `${x*zoom + pan.x - width/2}px`,
     width: `${width}px`,
     height: `${height}px`,
     transform: `rotate(${rotation}rad)`,
@@ -56,7 +49,6 @@ const containerStyle = computed(() => {
 .vector-path {
   fill: none;
   stroke: v-bind('store.primaryColor');
-  /* stroke-width é agora um estilo inline, mas mantemos um fallback */
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }

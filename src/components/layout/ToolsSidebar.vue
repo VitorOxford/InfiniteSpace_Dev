@@ -40,6 +40,12 @@ const editTools = [
     requiresLayer: true,
   },
   {
+    id: 'direct-select',
+    name: 'Seleção Direta (A)',
+    icon: 'M14.5 10.5 19 6l-3.5-3.5-8 8L3 15l4 4 7.5-7.5z', // Exemplo de ícone
+    requiresLayer: true, // Requer que uma camada de vetor esteja selecionada
+  },
+  {
     id: 'zoom-workspace',
     name: 'Zoom do Workspace (Z)',
     icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',

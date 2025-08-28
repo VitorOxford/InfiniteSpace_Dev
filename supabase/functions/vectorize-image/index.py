@@ -19,9 +19,13 @@ app.add_middleware(
 class ImagePayload(BaseModel):
     imageDataUrl: str
 
+def serialize_int(value):
+    return int(value)
+
 @app.post("/")
 async def vectorize_image(payload: ImagePayload):
     try:
+        # 1. Decodificar e preparar a imagem
         image_data_base64 = payload.imageDataUrl.split(',')[1]
         image_bytes = base64.b64decode(image_data_base64)
         pil_image = Image.open(io.BytesIO(image_bytes))
@@ -34,38 +38,39 @@ async def vectorize_image(payload: ImagePayload):
             img_cv = np.array(pil_image.convert('RGB'))
 
         img_gray = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
-        
-        # Invertemos a imagem e aplicamos um threshold para ter linhas brancas em fundo preto
-        img_inverted = cv2.bitwise_not(img_gray)
+        img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+        img_inverted = cv2.bitwise_not(img_blur)
         _, img_thresh = cv2.threshold(img_inverted, 127, 255, cv2.THRESH_BINARY)
 
-        # --- LÓGICA DE DETECÇÃO DE LINHAS COM PARÂMETROS AJUSTADOS ---
-        # threshold=50: Exige mais "votos" para considerar algo uma linha.
-        # minLineLength=30: Ignora linhas com menos de 30 pixels.
-        # maxLineGap=25: Permite um espaço de até 25 pixels entre segmentos para uni-los.
-        lines = cv2.HoughLinesP(img_thresh, 1, np.pi / 180, threshold=50, minLineLength=30, maxLineGap=25)
-        
+        # 2. Encontrar Contornos
+        contours, _ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         paths = []
-        if lines is not None:
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
 
-                # Convertendo os tipos de dados do NumPy para int padrão do Python
-                x = int(min(x1, x2))
-                y = int(min(y1, y2))
-                w = int(abs(x2 - x1))
-                h = int(abs(y2 - y1))
+        # 3. Processar cada contorno
+        for cnt in contours:
+            if cv2.contourArea(cnt) < 10:
+                continue
+
+            epsilon = 0.008 * cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, epsilon, True)
+            
+            x, y, w, h = cv2.boundingRect(approx)
+
+            if len(approx) > 1:
+                # Cria um único path relativo ao seu BBox
+                path_data = "M " + " L ".join(f"{serialize_int(pt[0][0] - x)},{serialize_int(pt[0][1] - y)}" for pt in approx)
+                if cv2.isContourConvex(approx):
+                    path_data += " Z"
                 
-                # O caminho normalizado começa em (0,0)
-                path_data = f"M {int(x1 - x)},{int(y1 - y)} L {int(x2 - x)},{int(y2 - y)}"
-
                 paths.append({
                     "path": path_data,
-                    "bbox": {"x": x, "y": y, "width": w, "height": h}
+                    "bbox": {
+                        "x": serialize_int(x), "y": serialize_int(y),
+                        "width": serialize_int(w), "height": serialize_int(h)
+                    }
                 })
-        
-        json_output = json.dumps(paths)
-        return Response(content=json_output, media_type="application/json")
+
+        return Response(content=json.dumps(paths), media_type="application/json")
 
     except Exception as e:
         return JSONResponse(content={"detail": str(e)}, status_code=500)

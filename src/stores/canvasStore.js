@@ -7,6 +7,39 @@ import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
 
+// --- NOVA FUNÇÃO HELPER ---
+// Simples parser de "M x,y L x,y L x,y..." para um array de objetos
+function parsePathData(pathData) {
+  if (!pathData) return [];
+  const points = [];
+  // Remove comandos e divide por espaços ou vírgulas, agrupando em pares
+  const commands = pathData.trim().split(/(?=[MLZ])/i);
+  commands.forEach(command => {
+    const type = command.charAt(0);
+    const args = command.substring(1).trim().split(/[\s,]+/).map(Number);
+    for (let i = 0; i < args.length; i += 2) {
+      points.push({ command: type, x: args[i], y: args[i+1] });
+    }
+  });
+  return points;
+}
+
+// --- NOVA FUNÇÃO HELPER ---
+// Converte o array de pontos de volta para uma string SVG path
+function pointsToPathData(points) {
+    if (!points || points.length === 0) return "";
+    let d = "";
+    points.forEach((p, i) => {
+        // Assume que o primeiro ponto é sempre 'M' e os seguintes são 'L'
+        const command = i === 0 ? 'M' : 'L';
+        d += `${command} ${p.x},${p.y} `;
+    });
+    // Adiciona 'Z' se a forma original era fechada (precisaria armazenar essa info se variar)
+    d += 'Z';
+    return d.trim();
+}
+
+
 async function normalizeImage(imageUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -38,14 +71,13 @@ export const useCanvasStore = defineStore('canvas', () => {
   const activeTool = ref('move')
   const primaryColor = ref('#000000')
 
-   const selectedPath = reactive({
+   // --- NOVO ESTADO PARA EDIÇÃO DE VETOR ---
+  const editingVector = reactive({
     layerId: null,
-    pathIndex: null,
+    points: [], // Armazena os pontos do path que está sendo editado
+    draggedPointIndex: null, // Índice do ponto que está sendo arrastado
+    originalPoints: [], // Para o histórico
   });
-  const isDraggingPath = ref(false);
-  let pathDragStart = { x: 0, y: 0 };
-  let pathOriginalTransform = { dx: 0, dy: 0 };
-
 
   const brush = reactive({ size: 20, opacity: 1, hardness: 0.9 });
   const eraser = reactive({ size: 40, opacity: 1 });
@@ -128,6 +160,61 @@ export const useCanvasStore = defineStore('canvas', () => {
       y: 0,
     }
   })
+
+  // --- NOVAS ACTIONS PARA EDIÇÃO DE VETOR ---
+  function enterVectorEditMode(layerId) {
+    const layer = layers.value.find(l => l.id === layerId);
+    if (!layer || layer.type !== 'vector' || activeTool.value === 'direct-select') return;
+
+    // Sair de outros modos de edição primeiro
+    clearSelection();
+
+    editingVector.layerId = layerId;
+    const parsedPoints = parsePathData(layer.pathData);
+    editingVector.points = parsedPoints;
+    editingVector.originalPoints = JSON.parse(JSON.stringify(parsedPoints)); // Salva estado original para o histórico
+    setActiveTool('direct-select');
+  }
+
+  // ❗️❗️❗️ CORREÇÃO APLICADA AQUI ❗️❗️❗️
+  function exitVectorEditMode() {
+    if (editingVector.layerId) {
+        const layer = layers.value.find(l => l.id === editingVector.layerId);
+        if (layer) {
+            // Compara se houve mudança para adicionar ao histórico
+            if (JSON.stringify(editingVector.originalPoints) !== JSON.stringify(editingVector.points)) {
+                // Criamos um "estado inicial" para o histórico que reflete o estado ANTES da edição
+                const initialState = getClonedLayerState(layer);
+                initialState.pathData = pointsToPathData(editingVector.originalPoints);
+                commitLayerStateToHistory(layer.id, initialState, 'Editar Vetor');
+            }
+        }
+    }
+    editingVector.layerId = null;
+    editingVector.points = [];
+    editingVector.draggedPointIndex = null;
+    editingVector.originalPoints = [];
+
+    // Altera a ferramenta diretamente para quebrar o ciclo de recursão.
+    if (activeTool.value === 'direct-select') {
+        activeTool.value = 'move';
+    }
+  }
+
+  function moveVectorPoint(newLayerCoords) {
+    if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
+
+    const layer = layers.value.find(l => l.id === editingVector.layerId);
+    if (!layer) return;
+
+    // Atualiza a posição do ponto no array
+    editingVector.points[editingVector.draggedPointIndex].x = newLayerCoords.x;
+    editingVector.points[editingVector.draggedPointIndex].y = newLayerCoords.y;
+
+    // Reconstrói a string pathData e atualiza a camada
+    layer.pathData = pointsToPathData(editingVector.points);
+    layer.version++; // Força a re-renderização
+  }
 
   function initializeEmptyWorkspace() {
     if (layers.value.length === 0) {
@@ -229,8 +316,6 @@ function updateLayerThumbnail(layer) {
       thumbCanvas.getContext('2d').drawImage(layer.image, 0, 0, thumbCanvas.width, thumbCanvas.height);
       layer.imageUrl = thumbCanvas.toDataURL();
     } else if (layer && layer.type === 'vector') {
-        // CORREÇÃO: Define a imageUrl como nula para vetores para evitar o erro.
-        // O painel de camadas saberá como renderizar um ícone no lugar.
         layer.imageUrl = null;
     }
   }
@@ -253,6 +338,7 @@ function updateLayerThumbnail(layer) {
           };
       }
       if (layer.type === 'vector') {
+          // Para vetores, clonamos tudo, incluindo o pathData
           return JSON.parse(JSON.stringify(layer));
       }
       return null;
@@ -303,49 +389,10 @@ function updateLayerThumbnail(layer) {
         contrast: 100, brightness: 100, invert: 0,
         flipH: false, flipV: false,
       },
-      paths: type === 'vector' ? [] : undefined,
-      pathData: undefined,
+      // Propriedade específica para vetores
+      pathData: type === 'vector' ? metadata.pathData || '' : undefined,
       version: 1,
     })
-  }
-
-  function startPathDrag(layerId, pathIndex, startCoords) {
-    if (activeTool.value !== 'move' || selectedLayerId.value !== layerId) return;
-
-    isDraggingPath.value = true;
-    selectedPath.layerId = layerId;
-    selectedPath.pathIndex = pathIndex;
-
-    const layer = layers.value.find(l => l.id === layerId);
-    if (layer && layer.paths[pathIndex]) {
-      pathOriginalTransform = { ...layer.paths[pathIndex].transform };
-    }
-    pathDragStart = startCoords;
-  }
-
-  function updatePathDrag(currentCoords) {
-    if (!isDraggingPath.value || selectedPath.layerId === null || selectedPath.pathIndex === null) return;
-
-    const layer = layers.value.find(l => l.id === selectedPath.layerId);
-    if (!layer || !layer.paths[selectedPath.pathIndex]) return;
-
-    // Calcula o deslocamento no espaço do mundo (sem zoom)
-    const dx = (currentCoords.x - pathDragStart.x) / workspace.zoom;
-    const dy = (currentCoords.y - pathDragStart.y) / workspace.zoom;
-
-    // Aplica o deslocamento à transformação original do traço
-    layer.paths[selectedPath.pathIndex].transform.dx = pathOriginalTransform.dx + dx;
-    layer.paths[selectedPath.pathIndex].transform.dy = pathOriginalTransform.dy + dy;
-    layer.version++; // Força a re-renderização
-  }
-
-  function endPathDrag() {
-    if (isDraggingPath.value) {
-      // Aqui você pode adicionar um estado ao histórico se desejar
-      isDraggingPath.value = false;
-      selectedPath.layerId = null;
-      selectedPath.pathIndex = null;
-    }
   }
 
   async function processAndAddLayer(newLayerData) {
@@ -395,6 +442,7 @@ function updateLayerThumbnail(layer) {
         alert("Houve um erro ao carregar a imagem. Tente novamente.");
       }
     } else {
+        // Para camadas vetoriais que não têm imageUrl inicial
         finalizeLayerAddition(newLayer, initialPosition, initialScale);
     }
   }
@@ -416,8 +464,13 @@ function updateLayerThumbnail(layer) {
   }
 
   function setActiveTool(tool) {
+      if (activeTool.value === 'direct-select' && tool !== 'direct-select') {
+        exitVectorEditMode();
+      }
+
       activeTool.value = tool;
-      if (!tool || (!tool.includes('select') && tool !== 'magic-wand')) {
+
+      if (!tool || (!tool.includes('select') && tool !== 'magic-wand' && tool !== 'direct-select')) {
         clearSelection();
       }
 
@@ -625,13 +678,18 @@ function updateLayerThumbnail(layer) {
     }
     function showSelectionContextMenu(visible, position = { x: 0, y: 0 }) { workspace.isSelectionContextMenuVisible = visible; workspace.selectionContextMenuPosition = position; }
     function showResizeModal(visible) { workspace.isResizeModalVisible = visible; }
-    function frameLayer(layerId) { const layer = layers.value.find((l) => l.id === layerId); const canvasEl = document.getElementById('mainCanvas'); if (!layer || !canvasEl || !layer.metadata.originalWidth && !layer.path) return; const padding = 0.8; const layerWidth = layer.metadata.originalWidth * layer.scale; const layerHeight = layer.metadata.originalHeight * layer.scale; const zoomX = (canvasEl.clientWidth * padding) / layerWidth; const zoomY = (canvasEl.clientHeight * padding) / layerHeight; const newZoom = Math.min(zoomX, zoomY, 2); workspace.zoom = newZoom; workspace.pan.x = canvasEl.clientWidth / 2 - layer.x * newZoom; workspace.pan.y = canvasEl.clientHeight / 2 - layer.y * newZoom; }
+    function frameLayer(layerId) { const layer = layers.value.find((l) => l.id === layerId); const canvasEl = document.getElementById('mainCanvas'); if (!layer || !canvasEl || !layer.metadata.originalWidth && !layer.pathData) return; const padding = 0.8; const layerWidth = layer.metadata.originalWidth * layer.scale; const layerHeight = layer.metadata.originalHeight * layer.scale; const zoomX = (canvasEl.clientWidth * padding) / layerWidth; const zoomY = (canvasEl.clientHeight * padding) / layerHeight; const newZoom = Math.min(zoomX, zoomY, 2); workspace.zoom = newZoom; workspace.pan.x = canvasEl.clientWidth / 2 - layer.x * newZoom; workspace.pan.y = canvasEl.clientHeight / 2 - layer.y * newZoom; }
     function setRulerUnit(unit) { workspace.rulers.unit = unit; }
     function togglePreviewInteractivity() { workspace.previewIsInteractive = !workspace.previewIsInteractive; if (!workspace.previewIsInteractive) endLasso(); }
     function setPreviewZoom(zoom) { workspace.previewZoom = zoom; }
-    function selectLayer(id) { selectedLayerId.value = id; }
+    function selectLayer(id) {
+        if (activeTool.value === 'direct-select' && editingVector.layerId !== id) {
+            exitVectorEditMode();
+        }
+        selectedLayerId.value = id;
+    }
     function startLayerResize(mousePos, initialScale) { if (!selectedLayer.value) return; workspace.transformStart.mousePos = mousePos; workspace.transformStart.scale = initialScale; workspace.transformStart.layerCenter = { x: selectedLayer.value.x, y: selectedLayer.value.y }; }
-    function updateLayerResize(mousePos) { // O parâmetro é mousePos
+    function updateLayerResize(mousePos) {
     if (!selectedLayer.value) return;
     const { transformStart, pan, zoom } = workspace;
     const layer = selectedLayer.value;
@@ -641,7 +699,6 @@ function updateLayerThumbnail(layer) {
     const initialDy = transformStart.mousePos.y - centerScreenY;
     const initialDist = Math.sqrt(initialDx * initialDx + initialDy * initialDy);
 
-    // CORREÇÃO AQUI: Use mousePos em vez de mouse
     const currentDx = mousePos.x - centerScreenX;
     const currentDy = mousePos.y - centerScreenY;
 
@@ -1201,7 +1258,6 @@ async function vectorizeLayer(layerId) {
     }
 
     try {
-        // Cria canvas temporário para extrair a imagem em base64
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = sourceLayer.image.width;
         tempCanvas.height = sourceLayer.image.height;
@@ -1209,11 +1265,9 @@ async function vectorizeLayer(layerId) {
         tempCtx.drawImage(sourceLayer.image, 0, 0);
         const imageDataUrl = tempCanvas.toDataURL('image/png');
 
-        // Pega a URL do servidor Python no Render via variável de ambiente
         const functionUrl = import.meta.env.VITE_RENDER_VECTORIZER_URL || '';
         if (!functionUrl) throw new Error("URL do servidor Python não configurada.");
 
-        // Faz a chamada POST para o Render
         const response = await fetch(functionUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1225,50 +1279,39 @@ async function vectorizeLayer(layerId) {
             throw new Error(errorBody.detail);
         }
 
-        const vectorData = await response.json(); // Espera JSON com vetor
-        if (!Array.isArray(vectorData) || vectorData.length === 0) {
-            throw new Error("A vetorização não retornou nenhum caminho válido.");
+        const vectorData = await response.json();
+        if (!Array.isArray(vectorData)) {
+            throw new Error("A resposta da vetorização não foi um array válido.");
+        }
+
+        if (vectorData.length === 0) {
+           alert("Nenhuma forma foi encontrada na imagem para vetorizar.");
+           return;
         }
 
         const vectorFolder = createFolder(sourceLayer.name + ' (Vetorizado)');
 
-        const sourceCenterOffset = {
-            x: -sourceLayer.metadata.originalWidth / 2,
-            y: -sourceLayer.metadata.originalHeight / 2
-        };
-
-        const cos = Math.cos(sourceLayer.rotation);
-        const sin = Math.sin(sourceLayer.rotation);
-
-        vectorData.forEach(function(vector, index) {
-            const path = vector.path;
-            const bbox = vector.bbox;
-
-            const localX = bbox.x + sourceCenterOffset.x;
-            const localY = bbox.y + sourceCenterOffset.y;
-
-            const rotatedX = localX * cos - localY * sin;
-            const rotatedY = localX * sin + localY * cos;
-
-            const newLayerCenterX = sourceLayer.x + (rotatedX + (bbox.width / 2)) * sourceLayer.scale;
-            const newLayerCenterY = sourceLayer.y + (rotatedY + (bbox.height / 2)) * sourceLayer.scale;
+        vectorData.forEach((vector, index) => {
+            const { path, bbox } = vector;
 
             const newLayer = createLayerObject(
-                sourceLayer.name + ' Vetor ' + (index + 1),
+                `${sourceLayer.name} Vetor ${index + 1}`,
                 'vector',
                 null,
-                Object.assign({}, sourceLayer.metadata, {
+                {
                     originalWidth: bbox.width,
-                    originalHeight: bbox.height
-                })
+                    originalHeight: bbox.height,
+                    pathData: path // Passando o pathData para o objeto
+                }
             );
 
-            newLayer.x = newLayerCenterX;
-            newLayer.y = newLayerCenterY;
+            // Posiciona a nova camada de vetor no mesmo local da forma original
+            newLayer.x = sourceLayer.x - (sourceLayer.metadata.originalWidth / 2) + bbox.x + (bbox.width / 2);
+            newLayer.y = sourceLayer.y - (sourceLayer.metadata.originalHeight / 2) + bbox.y + (bbox.height / 2);
+
+            // Mantém escala e rotação da camada original
             newLayer.scale = sourceLayer.scale;
             newLayer.rotation = sourceLayer.rotation;
-            newLayer.pathData = path;
-            newLayer.strokeWidth = 2;
 
             layers.value.push(newLayer);
             moveLayerToFolder(newLayer.id, vectorFolder.id);
@@ -1280,7 +1323,7 @@ async function vectorizeLayer(layerId) {
 
         globalHistoryStore.addState(getClonedGlobalState(), 'Vetorizar ' + sourceLayer.name);
 
-        console.log('%c[canvasStore] ' + vectorData.length + ' camadas de vetor criadas e agrupadas com sucesso!', 'color: #28a745; font-weight: bold;');
+        console.log(`%c[canvasStore] ${vectorData.length} camadas de vetor criadas com sucesso!`, 'color: #28a745; font-weight: bold;');
 
     } catch (error) {
         console.error('%c[canvasStore] FALHA AO VETORIZAR:', 'color: #ff0000; font-weight: bold;', error);
@@ -1292,6 +1335,7 @@ async function vectorizeLayer(layerId) {
 
   return {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
+    editingVector, // Exporta o novo estado
     setRulerUnit, togglePreviewInteractivity, setPreviewZoom, startLasso, updateLasso, endLasso, addLayer, addLocalLayer, selectLayer, updateLayerProperties,
     setActiveTool, updateWorkspace, toggleViewMode, deleteLayer, bringForward, sendBackward, moveLayer, frameLayer, startSelection, updateSelection, endSelection,
     clearSelection, startLayerResize, updateLayerResize, startLayerRotation, updateLayerRotation, showContextMenu, showSelectionContextMenu, showResizeModal,
@@ -1309,6 +1353,8 @@ async function vectorizeLayer(layerId) {
     initializeEmptyWorkspace,
     createDrawingLayer,
     vectorizeLayer,
-    createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder
+    createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder,
+    // Exporta as novas actions
+    enterVectorEditMode, exitVectorEditMode, moveVectorPoint
   }
 })

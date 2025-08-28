@@ -4,7 +4,8 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useImageAdjustmentsStore } from '@/stores/imageAdjustmentsStore'
 import SelectionOverlay from './SelectionOverlay.vue'
 import BoundingBox from './BoundingBox.vue'
-import VectorLayer from './VectorLayer.vue' // Importa o novo componente
+import VectorLayer from './VectorLayer.vue'
+import VectorEditHandles from './VectorEditHandles.vue' // IMPORTADO
 
 const props = defineProps({
   isMobile: Boolean,
@@ -19,6 +20,7 @@ const offscreenCtx = offscreenCanvas.getContext('2d')
 
 let actionStartState = null;
 let currentActionName = null;
+let lastClickTime = 0; // ADICIONADO para double click
 
 let isPanning = false
 let isDraggingLayer = false
@@ -276,6 +278,26 @@ function handleInteractionStart(e) {
     const worldMouse = screenToWorkspaceCoords(mouse);
     const clickedLayer = getLayerAtPosition(mouse);
 
+    // LÓGICA DE DOUBLE CLICK PARA EDIÇÃO DE VETOR
+    const currentTime = new Date().getTime();
+    if (currentTime - lastClickTime < 300) { // 300ms para double click
+        if (clickedLayer && clickedLayer.type === 'vector') {
+            store.enterVectorEditMode(clickedLayer.id);
+            lastClickTime = 0;
+            return;
+        }
+    }
+    lastClickTime = currentTime;
+
+    // Se a ferramenta de edição estiver ativa, não faz mais nada,
+    // a não ser que clique fora de uma alça, o que sai do modo.
+    if (store.activeTool === 'direct-select') {
+        if (!e.target.classList.contains('anchor-point')) {
+            store.exitVectorEditMode();
+        }
+        return;
+    }
+
     if (clickedLayer && store.selectedLayerId !== clickedLayer.id) {
         store.selectLayer(clickedLayer.id);
     }
@@ -350,6 +372,12 @@ function handleInteractionMove(e) {
     const mouse = { x: coords.clientX, y: coords.clientY };
     const canvasMouse = { x: coords.offsetX, y: coords.offsetY };
     const worldMouse = screenToWorkspaceCoords(canvasMouse);
+
+    // Ignora movimentos se a ferramenta de edição de vetor estiver ativa
+    // pois a lógica de arrastar pontos é tratada em VectorEditHandles.vue
+    if (store.activeTool === 'direct-select') {
+        return;
+    }
 
     if (isWandSelecting && store.selectedLayer) {
         const layerCoords = screenToLayerCoords(canvasMouse, store.selectedLayer);
@@ -449,7 +477,7 @@ function handleInteractionEnd(e) {
 
     const cursorMap = {
         'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair',
-        brush: 'crosshair', eraser: 'crosshair', move: 'grab',
+        brush: 'crosshair', eraser: 'crosshair', move: 'grab', 'direct-select': 'default'
     }
     if (canvasRef.value) {
         canvasRef.value.style.cursor = cursorMap[store.activeTool] || 'default'
@@ -557,7 +585,7 @@ function getLayerAtPosition(screenCoords) {
   return null;
 }
 
-watch( () => store.activeTool, (newTool) => { if (canvasRef.value) { const cursorMap = { 'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', brush: 'crosshair', eraser: 'crosshair', move: 'grab', }; canvasRef.value.style.cursor = cursorMap[newTool] || 'default'; } }, )
+watch( () => store.activeTool, (newTool) => { if (canvasRef.value) { const cursorMap = { 'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', brush: 'crosshair', eraser: 'crosshair', move: 'grab', 'direct-select': 'default' }; canvasRef.value.style.cursor = cursorMap[newTool] || 'default'; } }, )
 watch( () => [ store.layers.map(l => l.version), store.workspace.zoom, store.workspace.pan, store.layers, store.workspace.isTransforming ], () => { requestAnimationFrame(renderCanvas); }, { deep: true }, )
 const adjustmentsStore = useImageAdjustmentsStore(); watch( () => [adjustmentsStore.tempAdjustments, adjustmentsStore.isModalVisible], () => { requestAnimationFrame(renderCanvas); }, { deep: true }, )
 onMounted(initCanvas);
@@ -577,8 +605,9 @@ watch(() => [canvasRef.value?.parentElement?.clientWidth, canvasRef.value?.paren
         <canvas ref="canvasRef" id="mainCanvas"></canvas>
         <slot></slot>
         <VectorLayer v-for="layer in vectorLayers" :key="layer.id" :layer="layer" />
-        <BoundingBox v-if="store.selectedLayer" @handle-mouse-down="onHandleMouseDown" />
+        <BoundingBox v-if="store.selectedLayer && store.activeTool !== 'direct-select'" @handle-mouse-down="onHandleMouseDown" />
         <SelectionOverlay />
+        <VectorEditHandles />
     </div>
 </template>
 
