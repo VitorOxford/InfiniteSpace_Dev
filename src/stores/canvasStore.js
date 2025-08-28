@@ -16,9 +16,22 @@ function parsePathData(pathData) {
   const commands = pathData.trim().split(/(?=[MLZ])/i);
   commands.forEach(command => {
     const type = command.charAt(0);
+
+    // ---> INÍCIO DA CORREÇÃO <---
+    // Trata o comando 'Z' (closePath), que não tem coordenadas
+    if (type.toUpperCase() === 'Z') {
+        // Adicionamos um ponto especial para saber que a forma deve ser fechada
+        points.push({ command: 'Z', x: null, y: null });
+        return; // Pula para o próximo comando
+    }
+    // ---> FIM DA CORREÇÃO <---
+
     const args = command.substring(1).trim().split(/[\s,]+/).map(Number);
     for (let i = 0; i < args.length; i += 2) {
-      points.push({ command: type, x: args[i], y: args[i+1] });
+      // Garante que temos um par de coordenadas válido antes de adicionar
+      if (args[i+1] !== undefined) {
+          points.push({ command: type, x: args[i], y: args[i+1] });
+      }
     }
   });
   return points;
@@ -30,12 +43,19 @@ function pointsToPathData(points) {
     if (!points || points.length === 0) return "";
     let d = "";
     points.forEach((p, i) => {
-        // Assume que o primeiro ponto é sempre 'M' e os seguintes são 'L'
-        const command = i === 0 ? 'M' : 'L';
+        // ---> INÍCIO DA CORREÇÃO <---
+        // Se o comando for 'Z', simplesmente adiciona 'Z' e termina
+        if (p.command.toUpperCase() === 'Z') {
+            d += 'Z ';
+            return;
+        }
+
+        // Usa o comando original do ponto (M ou L)
+        const command = p.command || (i === 0 ? 'M' : 'L');
         d += `${command} ${p.x},${p.y} `;
+        // ---> FIM DA CORREÇÃO <---
     });
-    // Adiciona 'Z' se a forma original era fechada (precisaria armazenar essa info se variar)
-    d += 'Z';
+    // Remove o 'Z' fixo que era adicionado antes
     return d.trim();
 }
 
@@ -201,20 +221,52 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  function moveVectorPoint(newLayerCoords) {
-    if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
+function moveVectorPoint(newLayerCoords) {
+  if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
+  const layer = layers.value.find(l => l.id === editingVector.layerId);
+  if (!layer) return;
 
-    const layer = layers.value.find(l => l.id === editingVector.layerId);
-    if (!layer) return;
+  const localPoints = JSON.parse(JSON.stringify(editingVector.points));
+  localPoints[editingVector.draggedPointIndex].x = newLayerCoords.x;
+  localPoints[editingVector.draggedPointIndex].y = newLayerCoords.y;
 
-    // Atualiza a posição do ponto no array
-    editingVector.points[editingVector.draggedPointIndex].x = newLayerCoords.x;
-    editingVector.points[editingVector.draggedPointIndex].y = newLayerCoords.y;
+  let newMinX = Infinity, newMinY = Infinity, newMaxX = -Infinity, newMaxY = -Infinity;
+  localPoints.forEach(p => {
+    newMinX = Math.min(newMinX, p.x);
+    newMinY = Math.min(newMinY, p.y);
+    newMaxX = Math.max(newMaxX, p.x);
+    // A CORREÇÃO ESTÁ AQUI
+    newMaxY = Math.max(newMaxY, p.y); // Trocado "maxY" por "newMaxY"
+  });
 
-    // Reconstrói a string pathData e atualiza a camada
-    layer.pathData = pointsToPathData(editingVector.points);
-    layer.version++; // Força a re-renderização
-  }
+  const newWidth = newMaxX - newMinX;
+  const newHeight = newMaxY - newMinY;
+
+  const normalizedPoints = localPoints.map(p => ({
+    ...p,
+    x: p.x - newMinX,
+    y: p.y - newMinY
+  }));
+
+  const originShiftX = newMinX;
+  const originShiftY = newMinY;
+
+  const { scale, rotation } = layer;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const worldShiftX = (originShiftX * cos - originShiftY * sin) * scale;
+  const worldShiftY = (originShiftX * sin + originShiftY * cos) * scale;
+
+  layer.x += worldShiftX;
+  layer.y += worldShiftY;
+  layer.metadata.originalWidth = newWidth;
+  layer.metadata.originalHeight = newHeight;
+  layer.pathData = pointsToPathData(normalizedPoints);
+
+  editingVector.points = normalizedPoints;
+
+  layer.version++;
+}
 
   function initializeEmptyWorkspace() {
     if (layers.value.length === 0) {
