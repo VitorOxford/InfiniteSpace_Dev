@@ -24,15 +24,17 @@ function parsePathData(pathData) {
 
     const argsPerPoint = (type.toUpperCase() === 'Q') ? 4 : 2;
 
-    for (let i = 0; i < args.length; i += argsPerPoint) {
+    for (let i = 0; i < args.length; ) {
       const currentArgs = args.slice(i, i + argsPerPoint);
       if (currentArgs.length === argsPerPoint) {
         if (type.toUpperCase() === 'Q') {
           points.push({ command: type, cp1x: currentArgs[0], cp1y: currentArgs[1], x: currentArgs[2], y: currentArgs[3] });
+          i += 4;
         } else {
           points.push({ command: type, x: currentArgs[0], y: currentArgs[1] });
+          i += 2;
         }
-      }
+      } else { break; }
     }
   });
   return points;
@@ -90,7 +92,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     layerId: null,
     points: [],
     draggedPointIndex: null,
-    draggedPointType: null, // 'anchor' or 'control'
+    draggedPointType: null, // 'anchor' ou 'control'
     originalStateBeforeDrag: null,
     originalPoints: [],
   });
@@ -180,13 +182,13 @@ export const useCanvasStore = defineStore('canvas', () => {
   function enterVectorEditMode(layerId) {
     const layer = layers.value.find(l => l.id === layerId);
     if (!layer || layer.type !== 'vector') return;
-    if(editingVector.layerId === layerId) return; // Já está em modo de edição
+    if(editingVector.layerId === layerId) return;
 
     clearSelection();
     editingVector.layerId = layerId;
     editingVector.points = parsePathData(layer.pathData);
     editingVector.originalPoints = JSON.parse(JSON.stringify(editingVector.points));
-    editingVector.originalStateBeforeDrag = getClonedLayerState(layer); // Guarda estado para o histórico
+    editingVector.originalStateBeforeDrag = getClonedLayerState(layer);
     setActiveTool('direct-select');
   }
 
@@ -206,7 +208,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  // --- FUNÇÃO UNIFICADA PARA ATUALIZAR BOUNDING BOX ---
   function updateVectorLayerGeometry(layer, localPoints) {
       let newMinX = Infinity, newMinY = Infinity, newMaxX = -Infinity, newMaxY = -Infinity;
       localPoints.forEach(p => {
@@ -216,7 +217,6 @@ export const useCanvasStore = defineStore('canvas', () => {
           newMaxX = Math.max(newMaxX, p.x);
           newMaxY = Math.max(newMaxY, p.y);
 
-          // INCLUI PONTOS DE CONTROLO NA BOUNDING BOX
           if (p.command.toUpperCase() === 'Q') {
               newMinX = Math.min(newMinX, p.cp1x);
               newMinY = Math.min(newMinY, p.cp1y);
@@ -289,7 +289,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     const p1 = editingVector.points[pointIndex - 1];
     const p2 = editingVector.points[pointIndex];
 
-    if (p2.command.toUpperCase() === 'Q' || p1.command.toUpperCase() === 'Z') return;
+    if (p2.command.toUpperCase() === 'Q' || (p1 && p1.command.toUpperCase() === 'Z')) return;
 
     const controlPointX = (p1.x + p2.x) / 2;
     const controlPointY = (p1.y + p2.y) / 2;
@@ -300,10 +300,8 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     layer.pathData = pointsToPathData(editingVector.points);
     layer.version++;
-    editingVector.originalStateBeforeDrag = getClonedLayerState(layer); // Atualiza estado para o histórico
+    editingVector.originalStateBeforeDrag = getClonedLayerState(layer);
   }
-
-  // ... (RESTO DO FICHEIRO A PARTIR DAQUI PERMANECE IGUAL)
 
   function initializeEmptyWorkspace() {
     if (layers.value.length === 0) {
@@ -662,7 +660,7 @@ function updateLayerThumbnail(layer) {
     const startR = data[startIndex];
     const startG = data[startIndex + 1];
     const startB = data[startIndex + 2];
-    const startA = data[startIndex + 3];
+    const startA = data[startIndex + 3]; // Pega o alfa do ponto inicial
     const fillColor = hexToRgb(primaryColor.value);
     if (!fillColor) return;
     if (fillColor.r === startR && fillColor.g === startG && fillColor.b === startB && 255 * brush.opacity === startA) return;
@@ -672,21 +670,37 @@ function updateLayerThumbnail(layer) {
     while (pixelStack.length) {
       const [x, y] = pixelStack.pop();
       const currentIndex = (y * width + x);
-      if (visited[currentIndex]) continue;
+
+      if (x < 0 || y < 0 || x >= width || y >= height || visited[currentIndex]) {
+          continue;
+      }
       visited[currentIndex] = 1;
+
       const r = data[currentIndex * 4];
       const g = data[currentIndex * 4 + 1];
       const b = data[currentIndex * 4 + 2];
-      const colorDistance = Math.sqrt((r - startR) ** 2 + (g - startG) ** 2 + (b - startB) ** 2);
+      const a = data[currentIndex * 4 + 3]; // Pega o alfa do píxel atual
+
+      // ---> INÍCIO DA CORREÇÃO <---
+      // A fórmula agora inclui a diferença de transparência (a - startA)
+      const colorDistance = Math.sqrt(
+        (r - startR) ** 2 +
+        (g - startG) ** 2 +
+        (b - startB) ** 2 +
+        (a - startA) ** 2
+      );
+      // ---> FIM DA CORREÇÃO <---
+
       if (colorDistance <= tolerance) {
         data[currentIndex * 4] = fillColor.r;
         data[currentIndex * 4 + 1] = fillColor.g;
         data[currentIndex * 4 + 2] = fillColor.b;
         data[currentIndex * 4 + 3] = 255 * brush.opacity;
-        if (x > 0) pixelStack.push([x - 1, y]);
-        if (x < width - 1) pixelStack.push([x + 1, y]);
-        if (y > 0) pixelStack.push([x, y - 1]);
-        if (y < height - 1) pixelStack.push([x, y + 1]);
+
+        pixelStack.push([x + 1, y]);
+        pixelStack.push([x - 1, y]);
+        pixelStack.push([x, y + 1]);
+        pixelStack.push([x, y - 1]);
       }
     }
     ctx.putImageData(imageData, 0, 0);
@@ -696,11 +710,148 @@ function updateLayerThumbnail(layer) {
   }
 
     function getPixel(imageData, x, y) { if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) return null; const offset = (y * imageData.width + x) * 4; return imageData.data.slice(offset, offset + 4); }
-    function colorDistance(c1, c2) { return Math.abs(c1[0] - c2[0]) + Math.abs(c1[1] - c2[1]) + Math.abs(c1[2] - c2[2]); }
+ function colorDistance(c1, c2) {
+  if (!c1 || !c2) return Infinity;
+  // A fórmula agora calcula a distância considerando Vermelho, Verde, Azul E Transparência (Alfa)
+  return Math.sqrt(
+    (c1[0] - c2[0]) ** 2 +
+    (c1[1] - c2[1]) ** 2 +
+    (c1[2] - c2[2]) ** 2 +
+    (c1[3] - c2[3]) ** 2
+  );
+}
     function traceContour(pixelMask, width, height) { const MooreNeighborOffsets = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]]; let startPos = null; for (let i = 0; i < pixelMask.length; i++) { if (pixelMask[i] === 1) { startPos = { x: i % width, y: Math.floor(i / width) }; break; } } if (!startPos) return []; const contour = []; let currentPos = startPos; let dir = 0; do { contour.push(currentPos); let foundNext = false; for (let i = 0; i < 8; i++) { const checkDir = (dir + i) % 8; const neighbor = { x: currentPos.x + MooreNeighborOffsets[checkDir][0], y: currentPos.y + MooreNeighborOffsets[checkDir][1], }; if (neighbor.x >= 0 && neighbor.x < width && neighbor.y >= 0 && neighbor.y < height && pixelMask[neighbor.y * width + neighbor.x] === 1) { currentPos = neighbor; dir = (checkDir + 5) % 8; foundNext = true; break; } } if (!foundNext) break; } while (currentPos.x !== startPos.x || currentPos.y !== startPos.y); return contour; }
     function simplifyPath(points, tolerance) { if (points.length < 3) return points; const firstPoint = points[0]; const lastPoint = points[points.length - 1]; let index = -1; let maxDist = 0; for (let i = 1; i < points.length - 1; i++) { const dist = perpendicularDistance(points[i], firstPoint, lastPoint); if (dist > maxDist) { maxDist = dist; index = i; } } if (maxDist > tolerance) { const l1 = simplifyPath(points.slice(0, index + 1), tolerance); const l2 = simplifyPath(points.slice(index), tolerance); return l1.slice(0, l1.length - 1).concat(l2); } else { return [firstPoint, lastPoint]; } }
     function perpendicularDistance(point, lineStart, lineEnd) { let dx = lineEnd.x - lineStart.x; let dy = lineEnd.y - lineStart.y; if (dx === 0 && dy === 0) { dx = point.x - lineStart.x; dy = point.y - lineStart.y; return Math.sqrt(dx * dx + dy * dy); } const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy); const closestPoint = (t < 0) ? lineStart : (t > 1) ? lineEnd : { x: lineStart.x + t * dx, y: lineStart.y + t * dy }; dx = point.x - closestPoint.x; dy = point.y - closestPoint.y; return Math.sqrt(dx * dx + dy * dy); }
-    async function selectWithMagicWand(startPoint, accumulate = false) { if (!selectedLayer.value || !selectedLayer.value.image) return; const layer = selectedLayer.value; if (layer.image instanceof ImageBitmap) { const canvas = document.createElement('canvas'); canvas.width = layer.image.width; canvas.height = layer.image.height; canvas.getContext('2d').drawImage(layer.image, 0, 0); layer.image = canvas; } const canvas = layer.image; const ctx = canvas.getContext('2d'); const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); const { width, height } = canvas; const startX = Math.floor(startPoint.x); const startY = Math.floor(startPoint.y); if (!accumulate) { workspace.magicWand.initialColor = getPixel(imageData, startX, startY); } const initialColor = workspace.magicWand.initialColor; if (!initialColor || initialColor[3] === 0) { if (!accumulate) clearSelection(); return; } if (!accumulate || !workspace.magicWand.selectionMask) { workspace.magicWand.selectionMask = new Uint8Array(width * height); } const pixelMask = workspace.magicWand.selectionMask; const { tolerance, contiguous } = workspace.magicWand; const queue = [[startX, startY]]; const visited = new Uint8Array(width * height); visited[startY * width + startX] = 1; while (queue.length > 0) { const [x, y] = queue.shift(); const idx = y * width + x; if (pixelMask[idx] === 1) continue; const currentColor = getPixel(imageData, x, y); if (currentColor && colorDistance(initialColor, currentColor) <= tolerance) { pixelMask[idx] = 1; for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) { const nextX = x + dx, nextY = y + dy; const nextIdx = nextY * width + nextX; if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height && !visited[nextIdx]) { visited[nextIdx] = 1; queue.push([nextX, nextY]); } } } } const contour = traceContour(pixelMask, width, height); if (contour.length === 0) { if (!accumulate) clearSelection(); return; } const simplifiedContour = simplifyPath(contour, 1.5); const layerToWorkspace = (p) => { const localX = p.x - layer.metadata.originalWidth / 2; const localY = p.y - layer.metadata.originalHeight / 2; const cos = Math.cos(layer.rotation), sin = Math.sin(layer.rotation); const rotatedX = localX * cos - localY * sin; const rotatedY = localX * sin + localY * cos; return { x: rotatedX * layer.scale + layer.x, y: rotatedY * layer.scale + layer.y }; }; const contourPoints = simplifiedContour.map(layerToWorkspace); let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity; contourPoints.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }); const bbox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY }; workspace.lasso.boundingBox = bbox; calculateAndUpdateDimensions(bbox.width, bbox.height); workspace.lasso.points = contourPoints; workspace.lasso.active = true; workspace.magicWand.active = true; }
+async function selectWithMagicWand(startPoint, accumulate = false) {
+    if (!selectedLayer.value || !selectedLayer.value.image) return;
+    const layer = selectedLayer.value;
+    if (layer.image instanceof ImageBitmap) {
+        const canvas = document.createElement('canvas');
+        canvas.width = layer.image.width;
+        canvas.height = layer.image.height;
+        canvas.getContext('2d').drawImage(layer.image, 0, 0);
+        layer.image = canvas;
+    }
+    const canvas = layer.image;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const { data } = imageData;
+    const { width, height } = canvas;
+    const startX = Math.floor(startPoint.x);
+    const startY = Math.floor(startPoint.y);
+
+    if (!accumulate) {
+        workspace.magicWand.initialColor = getPixel(imageData, startX, startY);
+    }
+    const initialColor = workspace.magicWand.initialColor;
+
+    if (!initialColor) {
+        if (!accumulate) clearSelection();
+        return;
+    }
+
+    if (!accumulate || !workspace.magicWand.selectionMask) {
+        workspace.magicWand.selectionMask = new Uint8Array(width * height);
+    }
+
+    const pixelMask = workspace.magicWand.selectionMask;
+    const { tolerance, contiguous } = workspace.magicWand;
+    const [startR, startG, startB, startA] = initialColor;
+
+    if (contiguous) {
+        const queue = [[startX, startY]];
+        const visited = new Uint8Array(width * height);
+        visited[startY * width + startX] = 1;
+
+        while (queue.length > 0) {
+            const [x, y] = queue.shift();
+            const idx = y * width + x;
+            if (pixelMask[idx] === 1) continue;
+
+            const currentColor = getPixel(imageData, x, y);
+            if (currentColor) {
+                const [curR, curG, curB, curA] = currentColor;
+                let isMatch = false;
+
+                // --- INÍCIO DA LÓGICA CORRIGIDA ---
+                const alphaThreshold = 128; // Define o que é considerado opaco vs. transparente
+
+                // Caso 1: Clicou numa área opaca
+                if (startA >= alphaThreshold) {
+                    // Só considera outros píxeis opacos
+                    if (curA >= alphaThreshold) {
+                        const colorDist = Math.sqrt((curR - startR)**2 + (curG - startG)**2 + (curB - startB)**2);
+                        if (colorDist <= tolerance) {
+                            isMatch = true;
+                        }
+                    }
+                }
+                // Caso 2: Clicou numa área transparente
+                else {
+                    // Só considera outros píxeis transparentes
+                    if (curA < alphaThreshold) {
+                        isMatch = true;
+                    }
+                }
+                // --- FIM DA LÓGICA CORRIGIDA ---
+
+                if (isMatch) {
+                    pixelMask[idx] = 1;
+                    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+                        const nextX = x + dx, nextY = y + dy;
+                        if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) {
+                             const nextIdx = nextY * width + nextX;
+                             if (!visited[nextIdx]) {
+                                visited[nextIdx] = 1;
+                                queue.push([nextX, nextY]);
+                             }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+      // Lógica não contígua permanece a mesma, mas também se beneficia da nova `colorDistance`
+      for (let i = 0; i < width * height; i++) {
+            const x = i % width;
+            const y = Math.floor(i / width);
+            const currentColor = getPixel(imageData, x, y);
+            if (currentColor && colorDistance(initialColor, currentColor) <= tolerance) {
+                pixelMask[i] = 1;
+            }
+        }
+    }
+
+    const contour = traceContour(pixelMask, width, height);
+    if (contour.length === 0) {
+        if (!accumulate) clearSelection();
+        return;
+    }
+    const simplifiedContour = simplifyPath(contour, 1.5);
+    const layerToWorkspace = (p) => {
+        const localX = p.x - layer.metadata.originalWidth / 2;
+        const localY = p.y - layer.metadata.originalHeight / 2;
+        const cos = Math.cos(layer.rotation), sin = Math.sin(layer.rotation);
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+        return { x: rotatedX * layer.scale + layer.x, y: rotatedY * layer.scale + layer.y };
+    };
+    const contourPoints = simplifiedContour.map(layerToWorkspace);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    contourPoints.forEach(p => {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+    });
+    const bbox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    workspace.lasso.boundingBox = bbox;
+    calculateAndUpdateDimensions(bbox.width, bbox.height);
+    workspace.lasso.points = contourPoints;
+    workspace.lasso.active = true;
+    workspace.magicWand.active = true;
+}
     async function getLayerBlob(layer) { if (!layer) return null; if (layer.originalFile) { return layer.originalFile; } if (layer.imageUrl) { try { const response = await fetch(layer.imageUrl); if (!response.ok) throw new Error('Network response was not ok.'); return await response.blob(); } catch (error) { console.error(`Erro ao baixar o ficheiro da camada ${layer.name}:`, error); return null; } } return null; }
     function calculateAndUpdateDimensions(widthInWorld, heightInWorld) { const selection = workspace.selection; selection.dimPxW = widthInWorld; selection.dimPxH = heightInWorld; const layer = selectedLayer.value; if (!layer || !layer.metadata.dpi) { selection.dimCmW = 0; selection.dimCmH = 0; return; } const selectionWidthInLayerPx = widthInWorld / layer.scale; const selectionHeightInLayerPx = heightInWorld / layer.scale; const pxToCm = 2.54 / layer.metadata.dpi; selection.dimCmW = selectionWidthInLayerPx * pxToCm; selection.dimCmH = selectionHeightInLayerPx * pxToCm; }
     function startLasso(worldPoint) { workspace.lasso.active = true; workspace.lasso.points = [worldPoint]; workspace.lasso.boundingBox = { x: worldPoint.x, y: worldPoint.y, width: 0, height: 0 }; calculateAndUpdateDimensions(0, 0); }
@@ -1095,37 +1246,90 @@ function updateLayerThumbnail(layer) {
     });
   }
 
+  function rasterizeVectorLayer(layerId) {
+    const layer = layers.value.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'vector') {
+      alert('Apenas camadas de vetor podem ser rasterizadas.');
+      return;
+    }
+    globalHistoryStore.addState(getClonedGlobalState(), 'Rasterizar Camada');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const scale = 2;
+    canvas.width = layer.metadata.originalWidth * scale;
+    canvas.height = layer.metadata.originalHeight * scale;
+    const path = new Path2D(layer.pathData);
+    ctx.scale(scale, scale);
+    ctx.strokeStyle = primaryColor.value;
+    ctx.lineWidth = (layer.strokeWidth || 2);
+    ctx.stroke(path);
+    processAndAddLayer({
+      name: `${layer.name} (Rasterizado)`,
+      type: 'pattern',
+      imageUrl: canvas.toDataURL(),
+      metadata: {
+        dpi: layer.metadata.dpi || 96,
+        originalWidth: canvas.width,
+        originalHeight: canvas.height,
+      },
+      initialPosition: { x: layer.x, y: layer.y },
+      initialScale: layer.scale,
+    });
+    deleteLayer(layerId);
+  }
+
   function exportLayer(layerId, format = 'png', quality = 0.95) {
     const layer = layers.value.find((l) => l.id === layerId);
-    if (!layer || !layer.image) {
-      alert('Camada não encontrada ou vazia.');
+    if (!layer) {
+      alert('Camada não encontrada.');
+      return;
+    }
+    if (layer.type === 'vector') {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const scale = 3;
+        canvas.width = layer.metadata.originalWidth * layer.scale * scale;
+        canvas.height = layer.metadata.originalHeight * layer.scale * scale;
+        const path = new Path2D(layer.pathData);
+        ctx.scale(layer.scale * scale, layer.scale * scale);
+        ctx.strokeStyle = primaryColor.value;
+        ctx.lineWidth = (layer.strokeWidth || 2);
+        ctx.stroke(path);
+        const mimeType = `image/${format}`;
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        const link = document.createElement('a');
+        link.download = `${layer.name}.${format}`;
+        link.href = dataUrl;
+        link.click();
+        return;
+    }
+    if (!layer.image) {
+      alert('A camada de imagem está vazia.');
       return;
     }
 
     const imageToExport = layer.fullResImage || layer.image;
-
     const finalWidth = Math.round(layer.metadata.originalWidth * layer.scale);
     const finalHeight = Math.round(layer.metadata.originalHeight * layer.scale);
 
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = finalWidth;
     exportCanvas.height = finalHeight;
-    const ctx = exportCanvas.getContext('2d');
+    const exportCtx = exportCanvas.getContext('2d');
 
     const adj = layer.adjustments;
-    ctx.filter = [
+    exportCtx.filter = [
       `grayscale(${adj.grayscale || 0}%)`, `sepia(${adj.sepia || 0}%)`,
       `saturate(${adj.saturate || 100}%)`, `contrast(${adj.contrast || 100}%)`,
       `brightness(${adj.brightness || 100}%)`, `invert(${adj.invert || 0}%)`
     ].join(' ');
 
-    ctx.translate(finalWidth / 2, finalHeight / 2);
-    ctx.rotate(layer.rotation);
+    exportCtx.translate(finalWidth / 2, finalHeight / 2);
+    exportCtx.rotate(layer.rotation);
     const scaleX = adj.flipH ? -1 : 1;
     const scaleY = adj.flipV ? -1 : 1;
-    ctx.scale(scaleX, scaleY);
-
-    ctx.drawImage(imageToExport, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
+    exportCtx.scale(scaleX, scaleY);
+    exportCtx.drawImage(imageToExport, -finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
 
     const mimeType = `image/${format}`;
     const dataUrl = exportCanvas.toDataURL(mimeType, quality);
@@ -1430,7 +1634,7 @@ async function vectorizeLayer(layerId) {
     togglePanel, updatePanelState, getPanelState,
     zoomIn, zoomOut, zoomToFit, zoomAtPoint,
     createBlankCanvas,
-    exportLayer,
+    rasterizeVectorLayer, exportLayer,
     exportDrawnArea,
     initializeEmptyWorkspace,
     createDrawingLayer,

@@ -26,7 +26,6 @@ const targetFolder = computed(() => {
 const canMergeDown = computed(() => {
     if (!targetLayer.value) return false;
     const index = store.layers.findIndex(l => l.id === targetId.value);
-    // Não pode mesclar se for a primeira camada, ou se a camada abaixo estiver numa pasta diferente
     const layerBelow = store.layers[index - 1];
     return index > 0 && layerBelow && layerBelow.folderId === targetLayer.value.folderId;
 });
@@ -192,11 +191,22 @@ function onClick(action) {
                         <span class="text">Inverter Vertical</span>
                     </div>
                 </div>
+                <div class="menu-divider" v-if="targetLayer.type === 'vector'"></div>
+                <div class="menu-section" v-if="targetLayer.type === 'vector'">
+                    <div class="menu-item" @click="onClick(() => store.rasterizeVectorLayer(targetId))">
+                        <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></span>
+                        <span class="text">Converter para Imagem</span>
+                    </div>
+                </div>
                 <div class="menu-divider"></div>
                 <div class="menu-section">
                     <div class="menu-item" @click="onClick(() => store.exportLayer(targetId, 'png'))">
                         <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></span>
                         <span class="text">Exportar como PNG</span>
+                    </div>
+                    <div class="menu-item" @click="onClick(() => store.exportLayer(targetId, 'jpeg'))">
+                        <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></span>
+                        <span class="text">Exportar como JPEG</span>
                     </div>
                 </div>
                 <div class="menu-divider"></div>
@@ -232,9 +242,8 @@ function onClick(action) {
   width: 260px;
   backdrop-filter: blur(10px);
   background-color: rgba(255, 255, 255, 0.85);
-  /* --- CORREÇÃO APLICADA AQUI --- */
-  max-height: calc(100vh - 20px); /* Garante que o menu não exceda a altura da tela */
-  overflow-y: auto; /* Adiciona scroll se o conteúdo for maior que a altura máxima */
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
 }
 .menu-section {
     display: flex;
