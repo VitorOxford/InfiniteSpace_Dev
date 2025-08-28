@@ -30,6 +30,7 @@ let isPainting = false
 let isErasing = false
 let isWandSelecting = false;
 let isPinching = false;
+let isDrawingShape = false;
 let currentStroke = []
 let transformType = null
 let dragStartOffset = { x: 0, y: 0 }
@@ -278,18 +279,38 @@ function handleInteractionStart(e) {
     const worldMouse = screenToWorkspaceCoords(mouse);
     const clickedLayer = getLayerAtPosition(mouse);
 
-    // Lógica de duplo clique para entrar no modo de edição de vetor
+    if (store.activeTool === 'shape-draw') {
+        isDrawingShape = true;
+        const newLayer = store.createDrawingLayer();
+        newLayer.name = `Forma ${store.workspace.shapeDrawing.type}`;
+        store.workspace.shapeDrawing.tempLayerId = newLayer.id;
+
+        const shapeStartX = worldMouse.x;
+        const shapeStartY = worldMouse.y;
+
+        // Centraliza a nova camada onde o desenho começa
+        newLayer.x = shapeStartX;
+        newLayer.y = shapeStartY;
+
+        store.workspace.shapeDrawing.startX = shapeStartX;
+        store.workspace.shapeDrawing.startY = shapeStartY;
+        store.workspace.shapeDrawing.endX = shapeStartX;
+        store.workspace.shapeDrawing.endY = shapeStartY;
+        actionStartState = store.getClonedGlobalState();
+        currentActionName = 'Desenhar Forma';
+        return;
+    }
+
     const currentTime = new Date().getTime();
     if (currentTime - lastClickTime < 300) {
         if (clickedLayer && clickedLayer.type === 'vector') {
             store.enterVectorEditMode(clickedLayer.id);
-            lastClickTime = 0; // Reseta o tempo para evitar re-trigger
+            lastClickTime = 0;
             return;
         }
     }
     lastClickTime = currentTime;
 
-    // Lógica de interação principal quando a ferramenta de seleção direta está ativa
     if (store.activeTool === 'direct-select' && store.editingVector.layerId) {
         const layer = store.layers.find(l => l.id === store.editingVector.layerId);
         if (layer) {
@@ -315,7 +336,6 @@ function handleInteractionStart(e) {
             if (clickedOnSegment) return;
         }
 
-        // Se não clicou num ponto de ancoragem ou segmento, sai do modo de edição
         if (!e.target.classList.contains('anchor-point') && !e.target.classList.contains('control-point')) {
             store.exitVectorEditMode();
         }
@@ -394,18 +414,15 @@ function layerToWorkspaceCoords(point, layer) {
     const { x: layerX, y: layerY, scale, rotation, metadata } = layer;
     const { originalWidth, originalHeight } = metadata;
 
-    // Converte de coordenadas locais (origem no canto) para coordenadas com origem no centro
     const localX = (point.x - originalWidth / 2) * scale;
     const localY = (point.y - originalHeight / 2) * scale;
 
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
 
-    // Aplica rotação
     const rotatedX = localX * cos - localY * sin;
     const rotatedY = localX * sin + localY * cos;
 
-    // Retorna as coordenadas do "mundo" (canvas principal)
     return { x: layerX + rotatedX, y: layerY + rotatedY };
 }
 
@@ -415,8 +432,38 @@ function handleInteractionMove(e) {
     const canvasMouse = { x: coords.offsetX, y: coords.offsetY };
     const worldMouse = screenToWorkspaceCoords(canvasMouse);
 
-    // Ignora movimentos se a ferramenta de edição de vetor estiver ativa
-    // pois a lógica de arrastar pontos é tratada em VectorEditHandles.vue
+    if (isDrawingShape) {
+        const shapeLayer = store.layers.find(l => l.id === store.workspace.shapeDrawing.tempLayerId);
+        if (shapeLayer && shapeLayer.image.getContext) {
+            store.workspace.shapeDrawing.endX = worldMouse.x;
+            store.workspace.shapeDrawing.endY = worldMouse.y;
+
+            const shapeCtx = shapeLayer.image.getContext('2d');
+
+            const relativeStart = {
+                x: store.workspace.shapeDrawing.startX - shapeLayer.x + shapeLayer.metadata.originalWidth / 2,
+                y: store.workspace.shapeDrawing.startY - shapeLayer.y + shapeLayer.metadata.originalHeight / 2,
+            };
+            const relativeEnd = {
+                x: store.workspace.shapeDrawing.endX - shapeLayer.x + shapeLayer.metadata.originalWidth / 2,
+                y: store.workspace.shapeDrawing.endY - shapeLayer.y + shapeLayer.metadata.originalHeight / 2,
+            };
+
+            const shapeInfo = {
+                type: store.workspace.shapeDrawing.type,
+                startX: Math.min(relativeStart.x, relativeEnd.x),
+                startY: Math.min(relativeStart.y, relativeEnd.y),
+                endX: Math.max(relativeStart.x, relativeEnd.x),
+                endY: Math.max(relativeStart.y, relativeEnd.y),
+            }
+
+            store.drawShapeOnCanvas(shapeCtx, shapeInfo, store.primaryColor, store.workspace.zoom, shapeLayer.scale);
+
+            shapeLayer.version++;
+        }
+        return;
+    }
+
     if (store.activeTool === 'direct-select') {
         return;
     }
@@ -475,6 +522,29 @@ function handleInteractionMove(e) {
 }
 
 function handleInteractionEnd(e) {
+    if (isDrawingShape) {
+        const shapeLayer = store.layers.find(l => l.id === store.workspace.shapeDrawing.tempLayerId);
+        if (shapeLayer) {
+            // Finaliza a forma e a commita no histórico
+            const { startX, startY, endX, endY } = store.workspace.shapeDrawing;
+            const finalWidth = Math.abs(endX - startX);
+            const finalHeight = Math.abs(endY - startY);
+
+            if(finalWidth > 1 && finalHeight > 1) {
+                // Ajusta a posição da camada para o centro da forma desenhada
+                shapeLayer.x = (startX + endX) / 2;
+                shapeLayer.y = (startY + endY) / 2;
+                store.commitLayerStateToHistory(shapeLayer.id, actionStartState, currentActionName);
+            } else {
+                // Se a forma for muito pequena, remove a camada
+                store.deleteLayer(shapeLayer.id);
+            }
+        }
+
+        isDrawingShape = false;
+        store.workspace.shapeDrawing.tempLayerId = null;
+    }
+
     if (store.workspace.isTransforming) {
         store.setTransformingState(false);
         requestAnimationFrame(renderCanvas);
@@ -518,7 +588,7 @@ function handleInteractionEnd(e) {
     document.body.style.cursor = 'default'
 
     const cursorMap = {
-        'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair',
+        'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', 'shape-draw': 'crosshair',
         brush: 'crosshair', eraser: 'crosshair', move: 'grab', 'direct-select': 'default'
     }
     if (canvasRef.value) {
@@ -635,7 +705,7 @@ function getLayerAtPosition(screenCoords) {
   return null;
 }
 
-watch( () => store.activeTool, (newTool) => { if (canvasRef.value) { const cursorMap = { 'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', brush: 'crosshair', eraser: 'crosshair', move: 'grab', 'direct-select': 'default' }; canvasRef.value.style.cursor = cursorMap[newTool] || 'default'; } }, )
+watch( () => store.activeTool, (newTool) => { if (canvasRef.value) { const cursorMap = { 'rect-select': 'crosshair', 'lasso-select': 'crosshair', 'magic-wand': 'crosshair', brush: 'crosshair', eraser: 'crosshair', move: 'grab', 'direct-select': 'default', 'shape-draw': 'crosshair' }; canvasRef.value.style.cursor = cursorMap[newTool] || 'default'; } }, )
 watch( () => [ store.layers.map(l => l.version), store.workspace.zoom, store.workspace.pan, store.layers, store.workspace.isTransforming ], () => { requestAnimationFrame(renderCanvas); }, { deep: true }, )
 const adjustmentsStore = useImageAdjustmentsStore(); watch( () => [adjustmentsStore.tempAdjustments, adjustmentsStore.isModalVisible], () => { requestAnimationFrame(renderCanvas); }, { deep: true }, )
 onMounted(initCanvas);

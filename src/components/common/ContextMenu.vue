@@ -56,6 +56,39 @@ const zoomLevel = computed({
   },
 })
 
+// --- INÍCIO DA CORREÇÃO ---
+const menuStyle = computed(() => {
+  if (!store.workspace.isContextMenuVisible) return {};
+
+  const { x, y } = store.workspace.contextMenuPosition;
+  const { innerWidth, innerHeight } = window;
+  const margin = 15; // Espaço das bordas da janela
+
+  const menuWidth = 260; // Largura fixa do menu
+
+  let finalX = x;
+  let finalY = y;
+
+  // 1. Ajusta a posição horizontal para não sair da tela
+  if (finalX + menuWidth + margin > innerWidth) {
+    finalX = innerWidth - menuWidth - margin;
+  }
+  if (finalX < margin) {
+    finalX = margin;
+  }
+
+  // 2. Calcula o espaço vertical disponível e define a altura máxima
+  const spaceBelow = innerHeight - finalY;
+  const maxHeight = spaceBelow - margin * 2; // Deixa uma margem em baixo
+
+  return {
+    top: `${finalY}px`,
+    left: `${finalX}px`,
+    maxHeight: `${maxHeight}px`, // Define a altura máxima
+  };
+});
+// --- FIM DA CORREÇÃO ---
+
 function onClick(action) {
   if(action) action();
   if (!showZoomSlider.value) {
@@ -72,10 +105,7 @@ function onClick(action) {
   >
     <div
         class="context-menu"
-        :style="{
-        top: `${store.workspace.contextMenuPosition.y}px`,
-        left: `${store.workspace.contextMenuPosition.x}px`,
-        }"
+        :style="menuStyle"
     >
         <div v-if="showZoomSlider" class="menu-section">
             <div class="zoom-slider-container">
@@ -242,8 +272,8 @@ function onClick(action) {
   width: 260px;
   backdrop-filter: blur(10px);
   background-color: rgba(255, 255, 255, 0.85);
-  max-height: calc(100vh - 20px);
-  overflow-y: auto;
+  /* --- CORREÇÃO APLICADA AQUI --- */
+  overflow-y: auto; /* Adiciona a barra de rolagem quando o conteúdo excede a altura máxima */
 }
 .menu-section {
     display: flex;

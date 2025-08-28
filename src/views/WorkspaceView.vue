@@ -18,7 +18,6 @@ import SignatureModal from '@/components/modals/SignatureModal.vue'
 import UploadModal from '@/components/modals/UploadModal.vue'
 import NewProjectModal from '@/components/modals/NewProjectModal.vue'
 
-import ToolOptionsPanel from '@/components/layout/BrushSidebar.vue'
 import GlobalHistoryModal from '@/components/modals/GlobalHistoryModal.vue'
 import LayerHistoryModal from '@/components/modals/LayerHistoryModal.vue'
 
@@ -160,7 +159,6 @@ function handleKeyDown(e) {
         @show-upload-modal="showUploadModal"
       />
       <LayersPanel :is-visible="isLayersPanelDropdownVisible" />
-      <ToolOptionsPanel />
       <GlobalHistoryModal />
       <LayerHistoryModal />
       <ContextMenu v-if="store.workspace.isContextMenuVisible" />

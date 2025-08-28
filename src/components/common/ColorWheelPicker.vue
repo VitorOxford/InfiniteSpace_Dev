@@ -1,11 +1,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
-import { useCanvasStore } from '@/stores/canvasStore';
 
-const store = useCanvasStore();
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'color-selected']);
 
-// HSL é mais intuitivo para este tipo de picker
 const color = reactive({ h: 0, s: 100, l: 50 });
 
 const wheelRef = ref(null);
@@ -13,7 +10,6 @@ const squareRef = ref(null);
 const isDraggingHue = ref(false);
 const isDraggingSL = ref(false);
 
-// Converte HSL para o formato de cor do CSS
 const hueColor = computed(() => `hsl(${color.h}, 100%, 50%)`);
 const finalColorHex = computed(() => {
   const { h, s, l } = color;
@@ -36,7 +32,6 @@ const finalColorHex = computed(() => {
 });
 
 
-// Estilos para os cursores
 const hueCursorStyle = computed(() => ({ transform: `rotate(${color.h}deg) translate(88px)` }));
 const slCursorStyle = computed(() => ({
   left: `${color.s}%`,
@@ -44,7 +39,6 @@ const slCursorStyle = computed(() => ({
   backgroundColor: `hsl(${color.h}, ${color.s}%, ${color.l}%)`
 }));
 
-// Funções de manipulação do mouse
 function handleMouseDownHue(e) { isDraggingHue.value = true; updateHue(e); }
 function handleMouseDownSL(e) { isDraggingSL.value = true; updateSL(e); }
 
@@ -58,6 +52,8 @@ function stopDragging() {
 }
 
 function updateHue(e) {
+  // **CORREÇÃO: Adicionado um "guard clause" para evitar o erro**
+  if (!wheelRef.value) return;
   const rect = wheelRef.value.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
@@ -66,6 +62,8 @@ function updateHue(e) {
 }
 
 function updateSL(e) {
+  // **CORREÇÃO: Adicionado um "guard clause" para evitar o erro**
+  if (!squareRef.value) return;
   const rect = squareRef.value.getBoundingClientRect();
   const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
   const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
@@ -73,9 +71,8 @@ function updateSL(e) {
   color.l = 100 - (y / rect.height) * 100;
 }
 
-// Atualiza a cor na store sempre que ela mudar
 watch(finalColorHex, (newHex) => {
-  store.setPrimaryColor(newHex);
+  emit('color-selected', newHex);
 });
 
 onMounted(() => {

@@ -88,6 +88,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const activeTool = ref('move')
   const primaryColor = ref('#000000')
 
+
   const editingVector = reactive({
     layerId: null,
     points: [],
@@ -97,7 +98,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     originalPoints: [],
   });
 
-  const brush = reactive({ size: 20, opacity: 1, hardness: 0.9 });
+  const brush = reactive({ size: 20, opacity: 1, hardness: 0.9, sensitivity: 0.5 });
   const eraser = reactive({ size: 40, opacity: 1 });
   const copiedSelection = ref(null);
   const copiedFolder = ref(null);
@@ -151,6 +152,16 @@ export const useCanvasStore = defineStore('canvas', () => {
     isResizeModalVisible: false,
     isPreviewSidebarVisible: false,
     isSignatureModalVisible: false,
+    // **CORREÇÃO: Estado para desenho de formas**
+    shapeDrawing: {
+      active: false,
+      type: 'rectangle',
+      startX: 0,
+      startY: 0,
+      endX: 0,
+      endY: 0,
+      tempLayerId: null,
+    },
   });
 
   const selectedLayer = computed(() => layers.value.find((l) => l.id === selectedLayerId.value));
@@ -191,6 +202,61 @@ export const useCanvasStore = defineStore('canvas', () => {
     editingVector.originalStateBeforeDrag = getClonedLayerState(layer);
     setActiveTool('direct-select');
   }
+
+  function applyPaintToLayer(points) {
+    if (!selectedLayer.value || points.length < 1) return;
+
+    const layer = selectedLayer.value;
+    if (layer.image instanceof ImageBitmap) {
+      const canvas = document.createElement('canvas');
+      canvas.width = layer.image.width;
+      canvas.height = layer.image.height;
+      canvas.getContext('2d').drawImage(layer.image, 0, 0);
+      layer.image = canvas;
+    }
+    const ctx = layer.image.getContext('2d');
+    ctx.save();
+    ctx.globalAlpha = brush.opacity;
+    ctx.strokeStyle = primaryColor.value;
+    ctx.fillStyle = primaryColor.value;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (points.length === 1) {
+        const radius = (brush.size / layer.scale / workspace.zoom) / 2;
+        const blur = (1 - brush.hardness) * radius;
+        ctx.shadowBlur = blur > 0 ? blur : 0;
+        ctx.shadowColor = primaryColor.value;
+        ctx.beginPath();
+        ctx.arc(points[0].x, points[0].y, radius - (blur/2 > 0 ? blur/2 : 0), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        layer.version++;
+        return;
+    }
+
+    let lastPoint = points[0];
+    for (let i = 1; i < points.length; i++) {
+      const currentPoint = points[i];
+      const dist = Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
+      const speed = Math.max(0.1, dist);
+
+      const dynamicWidth = brush.size / (1 + (speed * brush.sensitivity));
+      const lineWidth = Math.max(1, dynamicWidth) / layer.scale / workspace.zoom;
+
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.moveTo(lastPoint.x, lastPoint.y);
+      ctx.lineTo(currentPoint.x, currentPoint.y);
+      ctx.stroke();
+
+      lastPoint = currentPoint;
+    }
+
+    ctx.restore();
+    layer.version++;
+  }
+
 
   function exitVectorEditMode() {
     if (editingVector.layerId) {
@@ -548,6 +614,11 @@ function updateLayerThumbnail(layer) {
   }
 
   function setActiveTool(tool) {
+      if (workspace.shapeDrawing) { // **CORREÇÃO: Verifica se o objeto existe**
+        workspace.shapeDrawing.active = false;
+        workspace.shapeDrawing.tempLayerId = null;
+      }
+
       if (activeTool.value === 'direct-select' && tool !== 'direct-select') {
         exitVectorEditMode();
       }
@@ -555,7 +626,7 @@ function updateLayerThumbnail(layer) {
       if (tool === 'direct-select' && selectedLayer.value && selectedLayer.value.type === 'vector') {
           enterVectorEditMode(selectedLayer.value.id);
       }
-      if (!tool || (!tool.includes('select') && tool !== 'magic-wand' && tool !== 'direct-select')) {
+      if (!tool || (!tool.includes('select') && !tool.startsWith('shape-') && tool !== 'magic-wand' && tool !== 'direct-select')) {
         clearSelection();
       }
       const isPaintTool = tool === 'brush' || tool === 'eraser' || tool === 'magic-wand' || tool === 'bucket';
@@ -566,38 +637,34 @@ function updateLayerThumbnail(layer) {
       }
   }
 
-  function applyPaintToLayer(points) {
-    if (!selectedLayer.value || !['drawing', 'pattern', 'mockup'].includes(selectedLayer.value.type)) {
-        return;
-    }
-    const layer = selectedLayer.value;
-    if (layer.image instanceof ImageBitmap) {
-        const canvas = document.createElement('canvas');
-        canvas.width = layer.image.width;
-        canvas.height = layer.image.height;
-        canvas.getContext('2d').drawImage(layer.image, 0, 0);
-        layer.image = canvas;
-    }
-    const ctx = layer.image.getContext('2d');
-    ctx.save();
-    ctx.globalAlpha = brush.opacity;
-    ctx.strokeStyle = primaryColor.value;
-    ctx.lineWidth = brush.size / layer.scale / workspace.zoom;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    if (points.length < 2) {
-        ctx.fillStyle = primaryColor.value;
-        ctx.arc(points[0].x, points[0].y, (brush.size / layer.scale / workspace.zoom) / 2, 0, Math.PI * 2);
-        ctx.fill();
-    } else {
-        ctx.moveTo(points[0].x, points[0].y);
-        ctx.lineTo(points[1].x, points[1].y);
-        ctx.stroke();
-    }
-    ctx.restore();
-    layer.version++;
+  function setActiveShapeTool(shapeType) {
+    setActiveTool('shape-draw');
+    workspace.shapeDrawing.type = shapeType;
   }
+
+  function drawShapeOnCanvas(ctx, shapeInfo, color, zoom = 1, scale = 1) {
+    const { type, startX, startY, endX, endY } = shapeInfo;
+    const width = endX - startX;
+    const height = endY - startY;
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = 'transparent';
+    ctx.lineWidth = 2 / zoom / scale;
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    ctx.beginPath();
+    if (type === 'rectangle') {
+      ctx.rect(startX, startY, width, height);
+    } else if (type === 'circle') {
+      const radiusX = Math.abs(width / 2);
+      const radiusY = Math.abs(height / 2);
+      const centerX = startX + width / 2;
+      const centerY = startY + height / 2;
+      ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+    }
+    ctx.stroke();
+  }
+
 
   function eraseFromLayer(points) {
     if (!selectedLayer.value) return;
@@ -660,7 +727,7 @@ function updateLayerThumbnail(layer) {
     const startR = data[startIndex];
     const startG = data[startIndex + 1];
     const startB = data[startIndex + 2];
-    const startA = data[startIndex + 3]; // Pega o alfa do ponto inicial
+    const startA = data[startIndex + 3];
     const fillColor = hexToRgb(primaryColor.value);
     if (!fillColor) return;
     if (fillColor.r === startR && fillColor.g === startG && fillColor.b === startB && 255 * brush.opacity === startA) return;
@@ -679,17 +746,14 @@ function updateLayerThumbnail(layer) {
       const r = data[currentIndex * 4];
       const g = data[currentIndex * 4 + 1];
       const b = data[currentIndex * 4 + 2];
-      const a = data[currentIndex * 4 + 3]; // Pega o alfa do píxel atual
+      const a = data[currentIndex * 4 + 3];
 
-      // ---> INÍCIO DA CORREÇÃO <---
-      // A fórmula agora inclui a diferença de transparência (a - startA)
       const colorDistance = Math.sqrt(
         (r - startR) ** 2 +
         (g - startG) ** 2 +
         (b - startB) ** 2 +
         (a - startA) ** 2
       );
-      // ---> FIM DA CORREÇÃO <---
 
       if (colorDistance <= tolerance) {
         data[currentIndex * 4] = fillColor.r;
@@ -712,7 +776,6 @@ function updateLayerThumbnail(layer) {
     function getPixel(imageData, x, y) { if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) return null; const offset = (y * imageData.width + x) * 4; return imageData.data.slice(offset, offset + 4); }
  function colorDistance(c1, c2) {
   if (!c1 || !c2) return Infinity;
-  // A fórmula agora calcula a distância considerando Vermelho, Verde, Azul E Transparência (Alfa)
   return Math.sqrt(
     (c1[0] - c2[0]) ** 2 +
     (c1[1] - c2[1]) ** 2 +
@@ -760,17 +823,15 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
 
     if (contiguous) {
         const queue = [[startX, startY]];
-        const visited = new Uint8Array(width * height); // Garante que cada pixel é processado uma vez
+        const visited = new Uint8Array(width * height);
         const [startR, startG, startB, startA] = initialColor;
 
         while (queue.length > 0) {
             const [x, y] = queue.shift();
             const idx = y * width + x;
 
-            // CRUCIAL: Se já visitou ou já está na máscara (por acumulação), pule.
-            // Mas a condição de adicionar à máscara deve ser apenas a tolerância.
             if (visited[idx] === 1) continue;
-            visited[idx] = 1; // Marca como visitado assim que for retirado da fila
+            visited[idx] = 1;
 
             const currentColor = getPixel(imageData, x, y);
             if (currentColor) {
@@ -784,15 +845,13 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
                 );
 
                 if (colorDist <= tolerance) {
-                    pixelMask[idx] = 1; // Adiciona à máscara SE a tolerância for respeitada
+                    pixelMask[idx] = 1;
 
-                    // Adiciona vizinhos à fila apenas se não tiverem sido visitados e estiverem dentro dos limites
                     for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
                         const nextX = x + dx, nextY = y + dy;
                         if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) {
                              const nextIdx = nextY * width + nextX;
-                             if (!visited[nextIdx]) { // Verifica se NÃO foi visitado antes de adicionar
-                                // Não marca como visitado aqui, apenas quando sai da fila
+                             if (!visited[nextIdx]) {
                                 queue.push([nextX, nextY]);
                              }
                         }
@@ -801,7 +860,6 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
             }
         }
     } else {
-      // Lógica para 'não contíguo' permanece a mesma, pois o problema era na propagação contígua
       for (let i = 0; i < width * height; i++) {
             const x = i % width;
             const y = Math.floor(i / width);
@@ -812,7 +870,6 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
         }
     }
 
-    // O restante do código para traceContour, simplifyPath, etc. permanece o mesmo.
     const contour = traceContour(pixelMask, width, height);
     if (contour.length === 0) {
         if (!accumulate) clearSelection();
@@ -873,27 +930,32 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
     workspace.document.height = newHeightPx;
   }
 
-    function showContextMenu(visible, position = { x: 0, y: 0 }, targetId = null, isFolder = false) {
+function showContextMenu(visible, position = { x: 0, y: 0 }, targetId = null, isFolder = false) {
       if (visible) {
         const menuWidth = 260;
-        const menuHeight = isFolder ? 220 : 450;
+        const estimatedMenuHeight = 450;
         const margin = 10;
 
         const { innerWidth, innerHeight } = window;
 
         let x = position.x;
         let y = position.y;
+        let fromBottom = false;
 
-        if (x + menuWidth > innerWidth) {
+        if (x + menuWidth + margin > innerWidth) {
           x = innerWidth - menuWidth - margin;
         }
-        if (y + menuHeight > innerHeight) {
-          y = innerHeight - menuHeight - margin;
+        if (x < margin) {
+          x = margin;
         }
-        if (x < 0) x = margin;
-        if (y < 0) y = margin;
 
-        workspace.contextMenuPosition = { x, y };
+        if (y + estimatedMenuHeight > innerHeight) {
+            fromBottom = true;
+            y = innerHeight - position.y;
+        }
+
+
+        workspace.contextMenuPosition = { x, y, fromBottom };
         workspace.contextMenuTargetId = targetId;
         workspace.contextMenuIsFolder = isFolder;
         if (targetId && !isFolder) {
@@ -1613,7 +1675,8 @@ async function vectorizeLayer(layerId) {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
     editingVector,
     setRulerUnit, togglePreviewInteractivity, setPreviewZoom, startLasso, updateLasso, endLasso, addLayer, addLocalLayer, selectLayer, updateLayerProperties,
-    setActiveTool, updateWorkspace, toggleViewMode, deleteLayer, bringForward, sendBackward, moveLayer, frameLayer, startSelection, updateSelection, endSelection,
+    setActiveTool, setActiveShapeTool, drawShapeOnCanvas,
+    updateWorkspace, toggleViewMode, deleteLayer, bringForward, sendBackward, moveLayer, frameLayer, startSelection, updateSelection, endSelection,
     clearSelection, startLayerResize, updateLayerResize, startLayerRotation, updateLayerRotation, showContextMenu, showSelectionContextMenu, showResizeModal,
     resizeMockup, showPreviewSidebar, showSignatureModal, getLayerBlob, updateLayerAdjustments, flipLayer, rotateLayer, duplicateLayer, copySelectionToClipboard,
     pasteSelection, duplicateSelection, cutoutSelection, applyPaintToLayer, floodFillLayer, setBrushOption, setEraserOption, setPrimaryColor,

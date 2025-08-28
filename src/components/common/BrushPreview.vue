@@ -1,67 +1,54 @@
 <template>
-  <canvas ref="canvasRef" class="brush-preview"></canvas>
+  <div class="brush-preview" :style="{ width: `${size}px`, height: `${size}px` }">
+    <div
+      class="brush-shape"
+      :style="brushShapeStyle"
+    ></div>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed } from 'vue'
 
 const props = defineProps({
-  size: { type: Number, required: true },
-  hardness: { type: Number, required: true },
+  size: {
+    type: Number,
+    default: 20,
+  },
+  hardness: {
+    type: Number,
+    default: 0.9, // 0 a 1
+  },
 });
 
-const canvasRef = ref(null);
+const brushShapeStyle = computed(() => {
+  const radius = props.size / 2;
+  // A dureza controla o desfoque da borda
+  // 1 (dura) = 0px blur; 0 (suave) = tamanho total do pincel blur
+  const blur = (1 - props.hardness) * radius;
 
-const drawPreview = () => {
-  const canvas = canvasRef.value;
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const width = canvas.width = 150;
-  const height = canvas.height = 32;
-
-  ctx.clearRect(0, 0, width, height);
-
-  // Simula um traço de pincel
-  const startX = 20;
-  const endX = width - 20;
-  const y = height / 2;
-
-  // O tamanho no preview é logarítmico para melhor visualização
-  const displaySize = Math.max(2, Math.log(props.size + 1) * 4);
-  const blur = (1 - props.hardness) * (displaySize * 0.4);
-
-  ctx.beginPath();
-  ctx.moveTo(startX, y);
-  ctx.lineTo(endX, y);
-
-  ctx.lineWidth = displaySize;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'black';
-
-  if (blur > 0) {
-    ctx.shadowColor = 'black';
-    ctx.shadowBlur = blur;
-  }
-
-  ctx.stroke();
-};
-
-onMounted(drawPreview);
-watch(props, drawPreview);
+  return {
+    width: `${props.size}px`,
+    height: `${props.size}px`,
+    borderRadius: '50%',
+    backgroundColor: 'black',
+    filter: `blur(${blur}px)`, // Aplica o desfoque com base na dureza
+    opacity: 0.8, // Um pouco de opacidade para simular o efeito do pincel
+  };
+});
 </script>
 
 <style scoped>
 .brush-preview {
-  width: 100%;
-  height: 32px;
-  background-color: var(--c-surface-dark);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  border: 1px solid var(--c-border);
-  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; /* Garante que o blur não ultrapasse o limite do container */
+  /* Remove a borda para não interferir na visualização do blur */
+  border-radius: 50%; /* Para garantir que o preview seja sempre redondo */
 }
-.brush-preview:hover {
-  border-color: var(--c-primary);
-  background-color: var(--c-white);
+.brush-shape {
+  /* Os estilos são definidos via computed property */
+  background-color: black;
 }
 </style>
