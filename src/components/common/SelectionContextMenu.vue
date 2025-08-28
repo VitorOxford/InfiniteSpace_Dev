@@ -18,16 +18,16 @@ function onClick(action) {
     }"
   >
     <ul>
-      <li @click="onClick(() => store.copySelectionToClipboard())">Copiar (Ctrl+C)</li>
+      <li @click="onClick(() => store.copySelectionToClipboard())">Copiar</li>
       <li
         :class="{ disabled: !store.copiedSelection }"
         @click="onClick(() => store.pasteSelection())"
       >
-        Colar (Ctrl+V)
+        Colar
       </li>
-      <li @click="onClick(() => store.duplicateSelection())">Duplicar (Ctrl+D)</li>
+      <li @click="onClick(() => store.duplicateSelection())">Duplicar</li>
       <li class="divider"></li>
-      <li @click="onClick(() => store.cutoutSelection())" class="danger">Excluir (Backspace)</li>
+      <li @click="onClick(() => store.cutoutSelection())" class="danger">Excluir</li>
     </ul>
   </div>
 </template>

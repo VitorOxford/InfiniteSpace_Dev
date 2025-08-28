@@ -726,16 +726,16 @@ function updateLayerThumbnail(layer) {
 async function selectWithMagicWand(startPoint, accumulate = false) {
     if (!selectedLayer.value || !selectedLayer.value.image) return;
     const layer = selectedLayer.value;
-    if (layer.image instanceof ImageBitmap) {
-        const canvas = document.createElement('canvas');
-        canvas.width = layer.image.width;
-        canvas.height = layer.image.height;
-        canvas.getContext('2d').drawImage(layer.image, 0, 0);
-        layer.image = canvas;
-    }
-    const canvas = layer.image;
-    const ctx = canvas.getContext('2d');
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    const imageToRead = layer.image;
+    tempCanvas.width = imageToRead.width;
+    tempCanvas.height = imageToRead.height;
+    tempCtx.drawImage(imageToRead, 0, 0);
+
+    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const canvas = tempCanvas;
     const { data } = imageData;
     const { width, height } = canvas;
     const startX = Math.floor(startPoint.x);
@@ -757,53 +757,42 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
 
     const pixelMask = workspace.magicWand.selectionMask;
     const { tolerance, contiguous } = workspace.magicWand;
-    const [startR, startG, startB, startA] = initialColor;
 
     if (contiguous) {
         const queue = [[startX, startY]];
-        const visited = new Uint8Array(width * height);
-        visited[startY * width + startX] = 1;
+        const visited = new Uint8Array(width * height); // Garante que cada pixel é processado uma vez
+        const [startR, startG, startB, startA] = initialColor;
 
         while (queue.length > 0) {
             const [x, y] = queue.shift();
             const idx = y * width + x;
-            if (pixelMask[idx] === 1) continue;
+
+            // CRUCIAL: Se já visitou ou já está na máscara (por acumulação), pule.
+            // Mas a condição de adicionar à máscara deve ser apenas a tolerância.
+            if (visited[idx] === 1) continue;
+            visited[idx] = 1; // Marca como visitado assim que for retirado da fila
 
             const currentColor = getPixel(imageData, x, y);
             if (currentColor) {
                 const [curR, curG, curB, curA] = currentColor;
-                let isMatch = false;
 
-                // --- INÍCIO DA LÓGICA CORRIGIDA ---
-                const alphaThreshold = 128; // Define o que é considerado opaco vs. transparente
+                const colorDist = Math.sqrt(
+                    (curR - startR) ** 2 +
+                    (curG - startG) ** 2 +
+                    (curB - startB) ** 2 +
+                    (curA - startA) ** 2
+                );
 
-                // Caso 1: Clicou numa área opaca
-                if (startA >= alphaThreshold) {
-                    // Só considera outros píxeis opacos
-                    if (curA >= alphaThreshold) {
-                        const colorDist = Math.sqrt((curR - startR)**2 + (curG - startG)**2 + (curB - startB)**2);
-                        if (colorDist <= tolerance) {
-                            isMatch = true;
-                        }
-                    }
-                }
-                // Caso 2: Clicou numa área transparente
-                else {
-                    // Só considera outros píxeis transparentes
-                    if (curA < alphaThreshold) {
-                        isMatch = true;
-                    }
-                }
-                // --- FIM DA LÓGICA CORRIGIDA ---
+                if (colorDist <= tolerance) {
+                    pixelMask[idx] = 1; // Adiciona à máscara SE a tolerância for respeitada
 
-                if (isMatch) {
-                    pixelMask[idx] = 1;
+                    // Adiciona vizinhos à fila apenas se não tiverem sido visitados e estiverem dentro dos limites
                     for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
                         const nextX = x + dx, nextY = y + dy;
                         if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) {
                              const nextIdx = nextY * width + nextX;
-                             if (!visited[nextIdx]) {
-                                visited[nextIdx] = 1;
+                             if (!visited[nextIdx]) { // Verifica se NÃO foi visitado antes de adicionar
+                                // Não marca como visitado aqui, apenas quando sai da fila
                                 queue.push([nextX, nextY]);
                              }
                         }
@@ -812,7 +801,7 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
             }
         }
     } else {
-      // Lógica não contígua permanece a mesma, mas também se beneficia da nova `colorDistance`
+      // Lógica para 'não contíguo' permanece a mesma, pois o problema era na propagação contígua
       for (let i = 0; i < width * height; i++) {
             const x = i % width;
             const y = Math.floor(i / width);
@@ -823,6 +812,7 @@ async function selectWithMagicWand(startPoint, accumulate = false) {
         }
     }
 
+    // O restante do código para traceContour, simplifyPath, etc. permanece o mesmo.
     const contour = traceContour(pixelMask, width, height);
     if (contour.length === 0) {
         if (!accumulate) clearSelection();
