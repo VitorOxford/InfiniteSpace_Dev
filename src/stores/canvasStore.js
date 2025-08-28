@@ -7,55 +7,50 @@ import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
 
-// --- NOVA FUNÇÃO HELPER ---
-// Simples parser de "M x,y L x,y L x,y..." para um array de objetos
+// --- FUNÇÕES HELPER ATUALIZADAS PARA VETORES ---
 function parsePathData(pathData) {
   if (!pathData) return [];
   const points = [];
-  // Remove comandos e divide por espaços ou vírgulas, agrupando em pares
-  const commands = pathData.trim().split(/(?=[MLZ])/i);
-  commands.forEach(command => {
-    const type = command.charAt(0);
+  const commands = pathData.trim().match(/[a-df-z][^a-df-z]*/ig) || [];
 
-    // ---> INÍCIO DA CORREÇÃO <---
-    // Trata o comando 'Z' (closePath), que não tem coordenadas
+  commands.forEach(commandStr => {
+    const type = commandStr.charAt(0);
+    const args = commandStr.substring(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+
     if (type.toUpperCase() === 'Z') {
-        // Adicionamos um ponto especial para saber que a forma deve ser fechada
-        points.push({ command: 'Z', x: null, y: null });
-        return; // Pula para o próximo comando
+      points.push({ command: 'Z' });
+      return;
     }
-    // ---> FIM DA CORREÇÃO <---
 
-    const args = command.substring(1).trim().split(/[\s,]+/).map(Number);
-    for (let i = 0; i < args.length; i += 2) {
-      // Garante que temos um par de coordenadas válido antes de adicionar
-      if (args[i+1] !== undefined) {
-          points.push({ command: type, x: args[i], y: args[i+1] });
+    const argsPerPoint = (type.toUpperCase() === 'Q') ? 4 : 2;
+
+    for (let i = 0; i < args.length; i += argsPerPoint) {
+      const currentArgs = args.slice(i, i + argsPerPoint);
+      if (currentArgs.length === argsPerPoint) {
+        if (type.toUpperCase() === 'Q') {
+          points.push({ command: type, cp1x: currentArgs[0], cp1y: currentArgs[1], x: currentArgs[2], y: currentArgs[3] });
+        } else {
+          points.push({ command: type, x: currentArgs[0], y: currentArgs[1] });
+        }
       }
     }
   });
   return points;
 }
 
-// --- NOVA FUNÇÃO HELPER ---
-// Converte o array de pontos de volta para uma string SVG path
 function pointsToPathData(points) {
     if (!points || points.length === 0) return "";
     let d = "";
-    points.forEach((p, i) => {
-        // ---> INÍCIO DA CORREÇÃO <---
-        // Se o comando for 'Z', simplesmente adiciona 'Z' e termina
+    points.forEach(p => {
         if (p.command.toUpperCase() === 'Z') {
             d += 'Z ';
-            return;
+        } else if (p.command.toUpperCase() === 'Q') {
+            d += `Q ${p.cp1x},${p.cp1y} ${p.x},${p.y} `;
         }
-
-        // Usa o comando original do ponto (M ou L)
-        const command = p.command || (i === 0 ? 'M' : 'L');
-        d += `${command} ${p.x},${p.y} `;
-        // ---> FIM DA CORREÇÃO <---
+        else if (p.x !== null && p.y !== null) {
+            d += `${p.command} ${p.x},${p.y} `;
+        }
     });
-    // Remove o 'Z' fixo que era adicionado antes
     return d.trim();
 }
 
@@ -91,12 +86,13 @@ export const useCanvasStore = defineStore('canvas', () => {
   const activeTool = ref('move')
   const primaryColor = ref('#000000')
 
-   // --- NOVO ESTADO PARA EDIÇÃO DE VETOR ---
   const editingVector = reactive({
     layerId: null,
-    points: [], // Armazena os pontos do path que está sendo editado
-    draggedPointIndex: null, // Índice do ponto que está sendo arrastado
-    originalPoints: [], // Para o histórico
+    points: [],
+    draggedPointIndex: null,
+    draggedPointType: null, // 'anchor' or 'control'
+    originalStateBeforeDrag: null,
+    originalPoints: [],
   });
 
   const brush = reactive({ size: 20, opacity: 1, hardness: 0.9 });
@@ -181,92 +177,133 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   })
 
-  // --- NOVAS ACTIONS PARA EDIÇÃO DE VETOR ---
   function enterVectorEditMode(layerId) {
     const layer = layers.value.find(l => l.id === layerId);
-    if (!layer || layer.type !== 'vector' || activeTool.value === 'direct-select') return;
+    if (!layer || layer.type !== 'vector') return;
+    if(editingVector.layerId === layerId) return; // Já está em modo de edição
 
-    // Sair de outros modos de edição primeiro
     clearSelection();
-
     editingVector.layerId = layerId;
-    const parsedPoints = parsePathData(layer.pathData);
-    editingVector.points = parsedPoints;
-    editingVector.originalPoints = JSON.parse(JSON.stringify(parsedPoints)); // Salva estado original para o histórico
+    editingVector.points = parsePathData(layer.pathData);
+    editingVector.originalPoints = JSON.parse(JSON.stringify(editingVector.points));
+    editingVector.originalStateBeforeDrag = getClonedLayerState(layer); // Guarda estado para o histórico
     setActiveTool('direct-select');
   }
 
-  // ❗️❗️❗️ CORREÇÃO APLICADA AQUI ❗️❗️❗️
   function exitVectorEditMode() {
     if (editingVector.layerId) {
-        const layer = layers.value.find(l => l.id === editingVector.layerId);
-        if (layer) {
-            // Compara se houve mudança para adicionar ao histórico
-            if (JSON.stringify(editingVector.originalPoints) !== JSON.stringify(editingVector.points)) {
-                // Criamos um "estado inicial" para o histórico que reflete o estado ANTES da edição
-                const initialState = getClonedLayerState(layer);
-                initialState.pathData = pointsToPathData(editingVector.originalPoints);
-                commitLayerStateToHistory(layer.id, initialState, 'Editar Vetor');
-            }
+        if(editingVector.originalStateBeforeDrag && JSON.stringify(editingVector.originalStateBeforeDrag) !== JSON.stringify(getClonedLayerState(selectedLayer.value))) {
+            commitLayerStateToHistory(editingVector.layerId, editingVector.originalStateBeforeDrag, 'Editar Vetor');
         }
     }
     editingVector.layerId = null;
     editingVector.points = [];
     editingVector.draggedPointIndex = null;
     editingVector.originalPoints = [];
-
-    // Altera a ferramenta diretamente para quebrar o ciclo de recursão.
+    editingVector.originalStateBeforeDrag = null;
     if (activeTool.value === 'direct-select') {
         activeTool.value = 'move';
     }
   }
 
-function moveVectorPoint(newLayerCoords) {
-  if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
-  const layer = layers.value.find(l => l.id === editingVector.layerId);
-  if (!layer) return;
+  // --- FUNÇÃO UNIFICADA PARA ATUALIZAR BOUNDING BOX ---
+  function updateVectorLayerGeometry(layer, localPoints) {
+      let newMinX = Infinity, newMinY = Infinity, newMaxX = -Infinity, newMaxY = -Infinity;
+      localPoints.forEach(p => {
+          if (p.command.toUpperCase() === 'Z') return;
+          newMinX = Math.min(newMinX, p.x);
+          newMinY = Math.min(newMinY, p.y);
+          newMaxX = Math.max(newMaxX, p.x);
+          newMaxY = Math.max(newMaxY, p.y);
 
-  const localPoints = JSON.parse(JSON.stringify(editingVector.points));
-  localPoints[editingVector.draggedPointIndex].x = newLayerCoords.x;
-  localPoints[editingVector.draggedPointIndex].y = newLayerCoords.y;
+          // INCLUI PONTOS DE CONTROLO NA BOUNDING BOX
+          if (p.command.toUpperCase() === 'Q') {
+              newMinX = Math.min(newMinX, p.cp1x);
+              newMinY = Math.min(newMinY, p.cp1y);
+              newMaxX = Math.max(newMaxX, p.cp1x);
+              newMaxY = Math.max(newMaxY, p.cp1y);
+          }
+      });
 
-  let newMinX = Infinity, newMinY = Infinity, newMaxX = -Infinity, newMaxY = -Infinity;
-  localPoints.forEach(p => {
-    newMinX = Math.min(newMinX, p.x);
-    newMinY = Math.min(newMinY, p.y);
-    newMaxX = Math.max(newMaxX, p.x);
-    // A CORREÇÃO ESTÁ AQUI
-    newMaxY = Math.max(newMaxY, p.y); // Trocado "maxY" por "newMaxY"
-  });
+      const newWidth = (newMaxX - newMinX) || 1;
+      const newHeight = (newMaxY - newMinY) || 1;
 
-  const newWidth = newMaxX - newMinX;
-  const newHeight = newMaxY - newMinY;
+      const normalizedPoints = localPoints.map(p => {
+        if (p.command.toUpperCase() === 'Z') return p;
+        const newPoint = { ...p, x: p.x - newMinX, y: p.y - newMinY };
+        if (p.command.toUpperCase() === 'Q') {
+          newPoint.cp1x -= newMinX;
+          newPoint.cp1y -= newMinY;
+        }
+        return newPoint;
+      });
 
-  const normalizedPoints = localPoints.map(p => ({
-    ...p,
-    x: p.x - newMinX,
-    y: p.y - newMinY
-  }));
+      const { scale, rotation } = layer;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const worldShiftX = (newMinX * cos - newMinY * sin) * scale;
+      const worldShiftY = (newMinX * sin + newMinY * cos) * scale;
 
-  const originShiftX = newMinX;
-  const originShiftY = newMinY;
+      layer.x += worldShiftX;
+      layer.y += worldShiftY;
+      layer.metadata.originalWidth = newWidth;
+      layer.metadata.originalHeight = newHeight;
+      layer.pathData = pointsToPathData(normalizedPoints);
 
-  const { scale, rotation } = layer;
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
-  const worldShiftX = (originShiftX * cos - originShiftY * sin) * scale;
-  const worldShiftY = (originShiftX * sin + originShiftY * cos) * scale;
+      editingVector.points = normalizedPoints;
+      layer.version++;
+  }
 
-  layer.x += worldShiftX;
-  layer.y += worldShiftY;
-  layer.metadata.originalWidth = newWidth;
-  layer.metadata.originalHeight = newHeight;
-  layer.pathData = pointsToPathData(normalizedPoints);
+  function moveVectorPoint(newLayerCoords) {
+      if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
+      const layer = layers.value.find(l => l.id === editingVector.layerId);
+      if (!layer) return;
 
-  editingVector.points = normalizedPoints;
+      const localPoints = JSON.parse(JSON.stringify(editingVector.points));
+      localPoints[editingVector.draggedPointIndex].x = newLayerCoords.x;
+      localPoints[editingVector.draggedPointIndex].y = newLayerCoords.y;
 
-  layer.version++;
-}
+      updateVectorLayerGeometry(layer, localPoints);
+  }
+
+  function moveVectorControlPoint(newLayerCoords) {
+      if (editingVector.layerId === null || editingVector.draggedPointIndex === null) return;
+      const layer = layers.value.find(l => l.id === editingVector.layerId);
+      if (!layer) return;
+
+      const localPoints = JSON.parse(JSON.stringify(editingVector.points));
+      const pointToEdit = localPoints[editingVector.draggedPointIndex];
+
+      if (pointToEdit.command.toUpperCase() !== 'Q') return;
+
+      pointToEdit.cp1x = newLayerCoords.x;
+      pointToEdit.cp1y = newLayerCoords.y;
+
+      updateVectorLayerGeometry(layer, localPoints);
+  }
+
+  function addCurvePoint(layerId, pointIndex) {
+    const layer = layers.value.find(l => l.id === layerId);
+    if (!layer || !editingVector.layerId || layer.id !== editingVector.layerId) return;
+
+    const p1 = editingVector.points[pointIndex - 1];
+    const p2 = editingVector.points[pointIndex];
+
+    if (p2.command.toUpperCase() === 'Q' || p1.command.toUpperCase() === 'Z') return;
+
+    const controlPointX = (p1.x + p2.x) / 2;
+    const controlPointY = (p1.y + p2.y) / 2;
+
+    p2.command = 'Q';
+    p2.cp1x = controlPointX;
+    p2.cp1y = controlPointY;
+
+    layer.pathData = pointsToPathData(editingVector.points);
+    layer.version++;
+    editingVector.originalStateBeforeDrag = getClonedLayerState(layer); // Atualiza estado para o histórico
+  }
+
+  // ... (RESTO DO FICHEIRO A PARTIR DAQUI PERMANECE IGUAL)
 
   function initializeEmptyWorkspace() {
     if (layers.value.length === 0) {
@@ -390,7 +427,6 @@ function updateLayerThumbnail(layer) {
           };
       }
       if (layer.type === 'vector') {
-          // Para vetores, clonamos tudo, incluindo o pathData
           return JSON.parse(JSON.stringify(layer));
       }
       return null;
@@ -441,7 +477,6 @@ function updateLayerThumbnail(layer) {
         contrast: 100, brightness: 100, invert: 0,
         flipH: false, flipV: false,
       },
-      // Propriedade específica para vetores
       pathData: type === 'vector' ? metadata.pathData || '' : undefined,
       version: 1,
     })
@@ -494,7 +529,6 @@ function updateLayerThumbnail(layer) {
         alert("Houve um erro ao carregar a imagem. Tente novamente.");
       }
     } else {
-        // Para camadas vetoriais que não têm imageUrl inicial
         finalizeLayerAddition(newLayer, initialPosition, initialScale);
     }
   }
@@ -519,15 +553,14 @@ function updateLayerThumbnail(layer) {
       if (activeTool.value === 'direct-select' && tool !== 'direct-select') {
         exitVectorEditMode();
       }
-
       activeTool.value = tool;
-
+      if (tool === 'direct-select' && selectedLayer.value && selectedLayer.value.type === 'vector') {
+          enterVectorEditMode(selectedLayer.value.id);
+      }
       if (!tool || (!tool.includes('select') && tool !== 'magic-wand' && tool !== 'direct-select')) {
         clearSelection();
       }
-
       const isPaintTool = tool === 'brush' || tool === 'eraser' || tool === 'magic-wand' || tool === 'bucket';
-
       if (isPaintTool && !workspace.panels.toolOptions.isVisible) {
           togglePanel('toolOptions', true);
       } else if (!isPaintTool && !workspace.panels.toolOptions.isPinned) {
@@ -1188,7 +1221,6 @@ function updateLayerThumbnail(layer) {
     link.click();
 }
 
-  // --- Funções para Pastas ---
   function createFolder(name = 'Nova Pasta') {
     const newFolder = reactive({
       id: uuidv4(),
@@ -1353,15 +1385,13 @@ async function vectorizeLayer(layerId) {
                 {
                     originalWidth: bbox.width,
                     originalHeight: bbox.height,
-                    pathData: path // Passando o pathData para o objeto
+                    pathData: path
                 }
             );
 
-            // Posiciona a nova camada de vetor no mesmo local da forma original
             newLayer.x = sourceLayer.x - (sourceLayer.metadata.originalWidth / 2) + bbox.x + (bbox.width / 2);
             newLayer.y = sourceLayer.y - (sourceLayer.metadata.originalHeight / 2) + bbox.y + (bbox.height / 2);
 
-            // Mantém escala e rotação da camada original
             newLayer.scale = sourceLayer.scale;
             newLayer.rotation = sourceLayer.rotation;
 
@@ -1387,7 +1417,7 @@ async function vectorizeLayer(layerId) {
 
   return {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
-    editingVector, // Exporta o novo estado
+    editingVector,
     setRulerUnit, togglePreviewInteractivity, setPreviewZoom, startLasso, updateLasso, endLasso, addLayer, addLocalLayer, selectLayer, updateLayerProperties,
     setActiveTool, updateWorkspace, toggleViewMode, deleteLayer, bringForward, sendBackward, moveLayer, frameLayer, startSelection, updateSelection, endSelection,
     clearSelection, startLayerResize, updateLayerResize, startLayerRotation, updateLayerRotation, showContextMenu, showSelectionContextMenu, showResizeModal,
@@ -1406,7 +1436,7 @@ async function vectorizeLayer(layerId) {
     createDrawingLayer,
     vectorizeLayer,
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder,
-    // Exporta as novas actions
-    enterVectorEditMode, exitVectorEditMode, moveVectorPoint
+    enterVectorEditMode, exitVectorEditMode, moveVectorPoint,
+    addCurvePoint, moveVectorControlPoint
   }
 })

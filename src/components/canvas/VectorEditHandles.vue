@@ -10,46 +10,65 @@ const layer = computed(() => {
     return store.layers.find(l => l.id === store.editingVector.layerId);
 });
 
-// Calcula a posição dos pontos na tela
-const screenPoints = computed(() => {
+// Calcula a posição dos pontos de ancoragem e de controlo na tela
+const renderedElements = computed(() => {
     if (!isVisible.value || !layer.value) return [];
 
     const { pan, zoom } = store.workspace;
     const { x: layerX, y: layerY, scale, rotation, metadata } = layer.value;
-    const { originalWidth, originalHeight } = metadata;
 
-    const layerOriginX = layerX - (originalWidth / 2) * scale;
-    const layerOriginY = layerY - (originalHeight / 2) * scale;
+    const elements = [];
+    let lastAnchorPoint = null;
 
-    return store.editingVector.points.map(p => {
-        // As coordenadas dos pontos são relativas ao BBox da camada
-        // Primeiro, aplicamos a escala e rotação da camada
-        const localX = p.x * scale;
-        const localY = p.y * scale;
+    store.editingVector.points.forEach((p, index) => {
+        if (p.command.toUpperCase() === 'Z') return;
 
-        const cos = Math.cos(rotation);
-        const sin = Math.sin(rotation);
+        const pointCoords = layerToScreenCoords(p, layer.value);
+        elements.push({ type: 'anchor', x: pointCoords.x, y: pointCoords.y, index });
 
-        const rotatedX = localX * cos - localY * sin;
-        const rotatedY = localX * sin + localY * cos;
+        if (p.command.toUpperCase() === 'Q') {
+            const controlPoint = { command: 'C', x: p.cp1x, y: p.cp1y };
+            const controlCoords = layerToScreenCoords(controlPoint, layer.value);
+            elements.push({ type: 'control', x: controlCoords.x, y: controlCoords.y, index });
 
-        // Agora, convertemos para coordenadas do workspace (mundo)
-        const worldX = layerOriginX + rotatedX;
-        const worldY = layerOriginY + rotatedY;
+            // Linhas de ajuda
+            if (lastAnchorPoint) {
+                elements.push({ type: 'handle-line', x1: lastAnchorPoint.x, y1: lastAnchorPoint.y, x2: controlCoords.x, y2: controlCoords.y });
+            }
+            elements.push({ type: 'handle-line', x1: controlCoords.x, y1: controlCoords.y, x2: pointCoords.x, y2: pointCoords.y });
+        }
 
-        // Finalmente, para coordenadas da tela
-        return {
-            x: worldX * zoom + pan.x,
-            y: worldY * zoom + pan.y,
-        };
+        lastAnchorPoint = pointCoords;
     });
+
+    return elements;
 });
 
-function startDraggingPoint(index, event) {
+function layerToScreenCoords(point, layer) {
+    const { pan, zoom } = store.workspace;
+    const { x: layerX, y: layerY, scale, rotation, metadata } = layer;
+
+    const localX = (point.x - metadata.originalWidth / 2) * scale;
+    const localY = (point.y - metadata.originalHeight / 2) * scale;
+
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const rotatedX = localX * cos - localY * sin;
+    const rotatedY = localX * sin + localY * cos;
+
+    return {
+        x: (layerX + rotatedX) * zoom + pan.x,
+        y: (layerY + rotatedY) * zoom + pan.y,
+    };
+}
+
+
+function startDraggingPoint(index, type, event) {
     event.stopPropagation();
     event.preventDefault();
     store.editingVector.draggedPointIndex = index;
-    // Adiciona os listeners no documento para capturar o movimento globalmente
+    store.editingVector.draggedPointType = type; // 'anchor' ou 'control'
+
     document.addEventListener('mousemove', onDrag);
     document.addEventListener('touchmove', onDrag, { passive: false });
     document.addEventListener('mouseup', endDrag, { once: true });
@@ -74,7 +93,6 @@ function onDrag(event) {
         y: coords.clientY - rect.top,
     };
 
-    // Converte a posição do mouse na tela para as coordenadas locais da camada vetorial
     const { pan, zoom } = store.workspace;
     const { x: layerX, y: layerY, scale, rotation, metadata } = layer.value;
 
@@ -95,53 +113,97 @@ function onDrag(event) {
         y: rotatedY + metadata.originalHeight / 2,
     };
 
-    store.moveVectorPoint(newLayerCoords);
+    // Modifica a função chamada na store para manipular pontos de controlo também
+    if (store.editingVector.draggedPointType === 'control') {
+        store.moveVectorControlPoint(newLayerCoords);
+    } else {
+        store.moveVectorPoint(newLayerCoords);
+    }
 }
 
 function endDrag() {
+    // Adiciona ao histórico no final do arrasto
+    const layerId = store.editingVector.layerId;
+    if (layerId) {
+        const initialState = { ...store.editingVector.originalStateBeforeDrag };
+        store.commitLayerStateToHistory(layerId, initialState, 'Editar Vetor');
+    }
+
     store.editingVector.draggedPointIndex = null;
+    store.editingVector.draggedPointType = null;
+    store.editingVector.originalStateBeforeDrag = null;
     document.removeEventListener('mousemove', onDrag);
     document.removeEventListener('touchmove', onDrag);
 }
-
 </script>
 
 <template>
   <div v-if="isVisible" class="vector-edit-handles-overlay">
-    <div
-      v-for="(point, index) in screenPoints"
-      :key="index"
-      class="anchor-point"
-      :style="{ left: point.x + 'px', top: point.y + 'px' }"
-      @mousedown.prevent.stop="startDraggingPoint(index, $event)"
-      @touchstart.prevent.stop="startDraggingPoint(index, $event)"
-    ></div>
+    <svg width="100%" height="100%" class="handle-lines-svg">
+      <template v-for="(el, index) in renderedElements" :key="`line-${index}`">
+        <line
+          v-if="el.type === 'handle-line'"
+          :x1="el.x1" :y1="el.y1"
+          :x2="el.x2" :y2="el.y2"
+          class="handle-line"
+        />
+      </template>
+    </svg>
+
+    <template v-for="(el, index) in renderedElements" :key="`point-${index}`">
+      <div
+        v-if="el.type === 'anchor'"
+        class="anchor-point"
+        :style="{ left: el.x + 'px', top: el.y + 'px' }"
+        @mousedown.prevent.stop="startDraggingPoint(el.index, 'anchor', $event)"
+        @touchstart.prevent.stop="startDraggingPoint(el.index, 'anchor', $event)"
+      ></div>
+      <div
+        v-if="el.type === 'control'"
+        class="control-point"
+        :style="{ left: el.x + 'px', top: el.y + 'px' }"
+        @mousedown.prevent.stop="startDraggingPoint(el.index, 'control', $event)"
+        @touchstart.prevent.stop="startDraggingPoint(el.index, 'control', $event)"
+      ></div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .vector-edit-handles-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
   pointer-events: none;
   z-index: 150;
 }
-.anchor-point {
+.handle-lines-svg {
+    position: absolute;
+    top: 0; left: 0;
+    overflow: visible;
+}
+.handle-line {
+    stroke: var(--c-primary);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+}
+.anchor-point, .control-point {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+}
+.anchor-point {
+  width: 10px; height: 10px;
   background-color: white;
   border: 2px solid var(--c-primary);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
+  border-radius: 2px;
   cursor: move;
-  pointer-events: all;
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
 }
-.anchor-point:hover {
-  transform: translate(-50%, -50%) scale(1.2);
+.control-point {
+  width: 8px; height: 8px;
+  background-color: var(--c-primary);
+  border: 1px solid white;
+  border-radius: 50%;
+  cursor: pointer;
 }
 </style>

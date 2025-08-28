@@ -278,21 +278,45 @@ function handleInteractionStart(e) {
     const worldMouse = screenToWorkspaceCoords(mouse);
     const clickedLayer = getLayerAtPosition(mouse);
 
-    // LÓGICA DE DOUBLE CLICK PARA EDIÇÃO DE VETOR
+    // Lógica de duplo clique para entrar no modo de edição de vetor
     const currentTime = new Date().getTime();
-    if (currentTime - lastClickTime < 300) { // 300ms para double click
+    if (currentTime - lastClickTime < 300) {
         if (clickedLayer && clickedLayer.type === 'vector') {
             store.enterVectorEditMode(clickedLayer.id);
-            lastClickTime = 0;
+            lastClickTime = 0; // Reseta o tempo para evitar re-trigger
             return;
         }
     }
     lastClickTime = currentTime;
 
-    // Se a ferramenta de edição estiver ativa, não faz mais nada,
-    // a não ser que clique fora de uma alça, o que sai do modo.
-    if (store.activeTool === 'direct-select') {
-        if (!e.target.classList.contains('anchor-point')) {
+    // Lógica de interação principal quando a ferramenta de seleção direta está ativa
+    if (store.activeTool === 'direct-select' && store.editingVector.layerId) {
+        const layer = store.layers.find(l => l.id === store.editingVector.layerId);
+        if (layer) {
+            const points = store.editingVector.points;
+            let clickedOnSegment = false;
+            for (let i = 1; i < points.length; i++) {
+                const p1 = points[i - 1];
+                const p2 = points[i];
+
+                if (p2.command.toUpperCase() !== 'L' || !p1.x) continue;
+
+                const worldP1 = layerToWorkspaceCoords(p1, layer);
+                const worldP2 = layerToWorkspaceCoords(p2, layer);
+
+                const distance = getDistanceToLineSegment(worldMouse, worldP1, worldP2);
+
+                if (distance < 5 / store.workspace.zoom) {
+                    store.addCurvePoint(layer.id, i);
+                    clickedOnSegment = true;
+                    break;
+                }
+            }
+            if (clickedOnSegment) return;
+        }
+
+        // Se não clicou num ponto de ancoragem ou segmento, sai do modo de edição
+        if (!e.target.classList.contains('anchor-point') && !e.target.classList.contains('control-point')) {
             store.exitVectorEditMode();
         }
         return;
@@ -366,6 +390,24 @@ function handleInteractionStart(e) {
     }
 }
 
+function layerToWorkspaceCoords(point, layer) {
+    const { x: layerX, y: layerY, scale, rotation, metadata } = layer;
+    const { originalWidth, originalHeight } = metadata;
+
+    // Converte de coordenadas locais (origem no canto) para coordenadas com origem no centro
+    const localX = (point.x - originalWidth / 2) * scale;
+    const localY = (point.y - originalHeight / 2) * scale;
+
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    // Aplica rotação
+    const rotatedX = localX * cos - localY * sin;
+    const rotatedY = localX * sin + localY * cos;
+
+    // Retorna as coordenadas do "mundo" (canvas principal)
+    return { x: layerX + rotatedX, y: layerY + rotatedY };
+}
 
 function handleInteractionMove(e) {
     const coords = getEventCoordinates(e);
@@ -563,6 +605,14 @@ function handleTouchEnd(e) {
 
 function handleWheel(e) { e.preventDefault(); if (store.workspace.viewMode === 'preview') return; const zoomIntensity = 0.1; const direction = e.deltaY < 0 ? 1 : -1; const mouse = { x: e.offsetX, y: e.offsetY }; const { pan, zoom } = store.workspace; const worldX = (mouse.x - pan.x) / zoom; const worldY = (mouse.y - pan.y) / zoom; const newZoom = zoom * (1 + direction * zoomIntensity); const saneZoom = Math.max(0.02, Math.min(newZoom, 10)); const newPanX = mouse.x - worldX * saneZoom; const newPanY = mouse.y - worldY * saneZoom; store.updateWorkspace({ zoom: saneZoom, pan: { x: newPanX, y: newPanY } }); }
 function screenToWorkspaceCoords(screenCoords) { const { pan, zoom } = store.workspace; return { x: (screenCoords.x - pan.x) / zoom, y: (screenCoords.y - pan.y) / zoom }; }
+function getDistanceToLineSegment(p, v, w) {
+  const l2 = (v.x - w.x) ** 2 + (v.y - w.y) ** 2;
+  if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const closestPoint = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+  return Math.hypot(p.x - closestPoint.x, p.y - closestPoint.y);
+}
 function screenToLayerCoords(screenCoords, layer) { const { pan, zoom } = store.workspace; const { x: layerX, y: layerY, scale, rotation, metadata, adjustments } = layer; const { originalWidth, originalHeight } = metadata; const worldX = (screenCoords.x - pan.x) / zoom; const worldY = (screenCoords.y - pan.y) / zoom; const dx = worldX - layerX; const dy = worldY - layerY; const cos = Math.cos(-rotation); const sin = Math.sin(-rotation); const rotatedX = dx * cos - dy * sin; const rotatedY = dx * sin + dy * cos; const unscaledX = rotatedX / scale; const unscaledY = rotatedY / scale; const scaleFlipX = adjustments.flipH ? -1 : 1; const scaleFlipY = adjustments.flipV ? -1 : 1; const unscaledFlippedX = unscaledX / scaleFlipX; const unscaledFlippedY = unscaledY / scaleFlipY; return { x: unscaledFlippedX + originalWidth / 2, y: unscaledFlippedY + originalHeight / 2, }; }
 function getLayerScreenCenter(layer) { const { pan, zoom } = store.workspace; return { x: layer.x * zoom + pan.x, y: layer.y * zoom + pan.y }; }
 function getLayerAtPosition(screenCoords) {
@@ -594,6 +644,8 @@ onUnmounted(cleanupEventListeners);
 watch(() => [canvasRef.value?.parentElement?.clientWidth, canvasRef.value?.parentElement?.clientHeight], () => {
     resizeCanvas();
 });
+
+
 </script>
 
 <template>
