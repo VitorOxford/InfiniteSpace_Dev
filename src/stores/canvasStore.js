@@ -1192,7 +1192,7 @@ function createDrawingLayer() {
 }
 
 async function vectorizeLayer(layerId) {
-    console.log('%c[canvasStore] Iniciando vetorização com servidor Python local direto...', 'color: #28a745; font-weight: bold;');
+    console.log('%c[canvasStore] Iniciando vetorização com servidor Python...', 'color: #28a745; font-weight: bold;');
 
     const sourceLayer = layers.value.find(l => l.id === layerId);
     if (!sourceLayer || !sourceLayer.image) {
@@ -1201,6 +1201,7 @@ async function vectorizeLayer(layerId) {
     }
 
     try {
+        // Cria canvas temporário para extrair a imagem em base64
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = sourceLayer.image.width;
         tempCanvas.height = sourceLayer.image.height;
@@ -1208,10 +1209,15 @@ async function vectorizeLayer(layerId) {
         tempCtx.drawImage(sourceLayer.image, 0, 0);
         const imageDataUrl = tempCanvas.toDataURL('image/png');
 
-        const response = await fetch('http://127.0.0.1:8000/', {
-            method: 'POST', // Garantindo que o método está correto
+        // Pega a URL do servidor Python no Render via variável de ambiente
+        const functionUrl = import.meta.env.VITE_RENDER_VECTORIZER_URL || '';
+        if (!functionUrl) throw new Error("URL do servidor Python não configurada.");
+
+        // Faz a chamada POST para o Render
+        const response = await fetch(functionUrl, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageDataUrl }),
+            body: JSON.stringify({ imageDataUrl })
         });
 
         if (!response.ok) {
@@ -1219,33 +1225,51 @@ async function vectorizeLayer(layerId) {
             throw new Error(errorBody.detail);
         }
 
-        const svgContent = await response.text();
+        const vectorData = await response.json(); // Espera JSON com vetor
+        if (!Array.isArray(vectorData) || vectorData.length === 0) {
+            throw new Error("A vetorização não retornou nenhum caminho válido.");
+        }
 
-        const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
-        const svgEl = svgDoc.querySelector("svg");
-        const pathEls = svgDoc.querySelectorAll("path");
+        const vectorFolder = createFolder(sourceLayer.name + ' (Vetorizado)');
 
-        if (!svgEl || !pathEls.length) throw new Error("Vetorização não retornou um SVG válido.");
+        const sourceCenterOffset = {
+            x: -sourceLayer.metadata.originalWidth / 2,
+            y: -sourceLayer.metadata.originalHeight / 2
+        };
 
-        const svgWidth = parseFloat(svgEl.getAttribute("width"));
-        const svgHeight = parseFloat(svgEl.getAttribute("height"));
+        const cos = Math.cos(sourceLayer.rotation);
+        const sin = Math.sin(sourceLayer.rotation);
 
-        const vectorFolder = createFolder(`${sourceLayer.name} (Vetorizado)`);
+        vectorData.forEach(function(vector, index) {
+            const path = vector.path;
+            const bbox = vector.bbox;
 
-        pathEls.forEach((pathEl, index) => {
-            const pathData = pathEl.getAttribute("d") || '';
-            const newLayer = createLayerObject(`${sourceLayer.name} Vetor ${index + 1}`, 'vector', null, {
-                ...sourceLayer.metadata,
-                originalWidth: svgWidth,
-                originalHeight: svgHeight,
-            });
-            newLayer.x = sourceLayer.x;
-            newLayer.y = sourceLayer.y;
-            newLayer.scale = sourceLayer.scale * (sourceLayer.metadata.originalWidth / svgWidth);
+            const localX = bbox.x + sourceCenterOffset.x;
+            const localY = bbox.y + sourceCenterOffset.y;
+
+            const rotatedX = localX * cos - localY * sin;
+            const rotatedY = localX * sin + localY * cos;
+
+            const newLayerCenterX = sourceLayer.x + (rotatedX + (bbox.width / 2)) * sourceLayer.scale;
+            const newLayerCenterY = sourceLayer.y + (rotatedY + (bbox.height / 2)) * sourceLayer.scale;
+
+            const newLayer = createLayerObject(
+                sourceLayer.name + ' Vetor ' + (index + 1),
+                'vector',
+                null,
+                Object.assign({}, sourceLayer.metadata, {
+                    originalWidth: bbox.width,
+                    originalHeight: bbox.height
+                })
+            );
+
+            newLayer.x = newLayerCenterX;
+            newLayer.y = newLayerCenterY;
+            newLayer.scale = sourceLayer.scale;
             newLayer.rotation = sourceLayer.rotation;
-            newLayer.pathData = pathData;
-            newLayer.strokeWidth = 10;
+            newLayer.pathData = path;
+            newLayer.strokeWidth = 2;
+
             layers.value.push(newLayer);
             moveLayerToFolder(newLayer.id, vectorFolder.id);
         });
@@ -1254,15 +1278,17 @@ async function vectorizeLayer(layerId) {
             selectLayer(layers.value[layers.value.length - 1].id);
         }
 
-        globalHistoryStore.addState(getClonedGlobalState(), `Vetorizar ${sourceLayer.name}`);
+        globalHistoryStore.addState(getClonedGlobalState(), 'Vetorizar ' + sourceLayer.name);
 
-        console.log(`%c[canvasStore] ${pathEls.length} camadas de vetor criadas e agrupadas com sucesso!`, 'color: #28a745; font-weight: bold;');
+        console.log('%c[canvasStore] ' + vectorData.length + ' camadas de vetor criadas e agrupadas com sucesso!', 'color: #28a745; font-weight: bold;');
 
     } catch (error) {
-        console.error('%c[canvasStore] FALHA AO VETORIZAR (Python Local):', 'color: #ff0000; font-weight: bold;', error);
-        alert(`Ocorreu um erro durante a vetorização: ${error.message}`);
+        console.error('%c[canvasStore] FALHA AO VETORIZAR:', 'color: #ff0000; font-weight: bold;', error);
+        alert('Ocorreu um erro durante a vetorização: ' + error.message);
     }
-  }
+}
+
+
 
   return {
     layers, folders, selectedLayerId, selectedLayer, activeTool, workspace, mockupLayer, rulerSource, isSelectionActive, copiedSelection, primaryColor, brush, eraser,
