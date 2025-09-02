@@ -7,7 +7,7 @@ import { useImageAdjustmentsStore } from './imageAdjustmentsStore'
 import { useLayerHistoryStore } from './layerHistoryStore'
 import { useHistoryStore } from './historyStore'
 
-// --- FUNÇÕES HELPER ATUALIZADAS PARA VETORES ---
+// --- FUNÇÕES HELPER (sem alterações) ---
 function parsePathData(pathData) {
   if (!pathData) return [];
   const points = [];
@@ -98,7 +98,15 @@ export const useCanvasStore = defineStore('canvas', () => {
     originalPoints: [],
   });
 
-  const brush = reactive({ size: 20, opacity: 1, hardness: 0.9, sensitivity: 0.5 });
+  const brush = reactive({
+    size: 20,
+    opacity: 1,
+    hardness: 0.9,
+    sensitivity: 0.5,
+    // NOVO: tipo do pincel para controlar a lógica de pintura
+    type: 'basic',
+    taper: 80, // Percentagem de afilamento
+  });
   const eraser = reactive({ size: 40, opacity: 1 });
   const copiedSelection = ref(null);
   const copiedFolder = ref(null);
@@ -152,7 +160,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     isResizeModalVisible: false,
     isPreviewSidebarVisible: false,
     isSignatureModalVisible: false,
-    // **CORREÇÃO: Estado para desenho de formas**
     shapeDrawing: {
       active: false,
       type: 'rectangle',
@@ -203,16 +210,17 @@ export const useCanvasStore = defineStore('canvas', () => {
     setActiveTool('direct-select');
   }
 
-  function applyPaintToLayer(points) {
+  // --- NOVA LÓGICA DE PINTURA ---
+  function applyPaintToLayer(points, totalStrokeLength) {
     if (!selectedLayer.value || points.length < 1) return;
 
     const layer = selectedLayer.value;
     if (layer.image instanceof ImageBitmap) {
-      const canvas = document.createElement('canvas');
-      canvas.width = layer.image.width;
-      canvas.height = layer.image.height;
-      canvas.getContext('2d').drawImage(layer.image, 0, 0);
-      layer.image = canvas;
+        const canvas = document.createElement('canvas');
+        canvas.width = layer.image.width;
+        canvas.height = layer.image.height;
+        canvas.getContext('2d').drawImage(layer.image, 0, 0);
+        layer.image = canvas;
     }
     const ctx = layer.image.getContext('2d');
     ctx.save();
@@ -222,13 +230,15 @@ export const useCanvasStore = defineStore('canvas', () => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
+    const baseSize = brush.size / layer.scale / workspace.zoom;
+
+    // --- CORREÇÃO DO BUG DO CÍRCULO ---
+    // Agora um clique único desenha um ponto que corresponde ao início de um traço
     if (points.length === 1) {
-        const radius = (brush.size / layer.scale / workspace.zoom) / 2;
-        const blur = (1 - brush.hardness) * radius;
-        ctx.shadowBlur = blur > 0 ? blur : 0;
-        ctx.shadowColor = primaryColor.value;
+        const startTaper = brush.taper > 0 ? (1 - brush.taper / 100) : 1;
+        const radius = (baseSize * startTaper) / 2;
         ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, radius - (blur/2 > 0 ? blur/2 : 0), 0, Math.PI * 2);
+        ctx.arc(points[0].x, points[0].y, Math.max(0.5, radius), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
         layer.version++;
@@ -236,21 +246,37 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
 
     let lastPoint = points[0];
+    let distanceTraveled = lastPoint.dist; // A distância já percorrida no traço
+
     for (let i = 1; i < points.length; i++) {
-      const currentPoint = points[i];
-      const dist = Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
-      const speed = Math.max(0.1, dist);
+        const currentPoint = points[i];
 
-      const dynamicWidth = brush.size / (1 + (speed * brush.sensitivity));
-      const lineWidth = Math.max(1, dynamicWidth) / layer.scale / workspace.zoom;
+        // Fator de afilamento (taper)
+        const taperStartFraction = brush.taper / 100;
+        const taperEndFraction = 1.0 - taperStartFraction;
+        let taper = 1.0;
+        if (totalStrokeLength > 0) {
+            const progress = distanceTraveled / totalStrokeLength;
+            if (progress < taperStartFraction) {
+                taper = progress / taperStartFraction;
+            } else if (progress > taperEndFraction) {
+                taper = (1.0 - progress) / taperStartFraction;
+            }
+        }
 
-      ctx.lineWidth = lineWidth;
-      ctx.beginPath();
-      ctx.moveTo(lastPoint.x, lastPoint.y);
-      ctx.lineTo(currentPoint.x, currentPoint.y);
-      ctx.stroke();
+        const dist = Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
+        const speed = Math.max(0.1, dist);
+        const dynamicWidth = baseSize / (1 + (speed * brush.sensitivity));
+        const lineWidth = Math.max(1.0, dynamicWidth * taper);
 
-      lastPoint = currentPoint;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(lastPoint.x, lastPoint.y);
+        ctx.lineTo(currentPoint.x, currentPoint.y);
+        ctx.stroke();
+
+        lastPoint = currentPoint;
+        distanceTraveled = currentPoint.dist;
     }
 
     ctx.restore();
@@ -614,7 +640,7 @@ function updateLayerThumbnail(layer) {
   }
 
   function setActiveTool(tool) {
-      if (workspace.shapeDrawing) { // **CORREÇÃO: Verifica se o objeto existe**
+      if (workspace.shapeDrawing) {
         workspace.shapeDrawing.active = false;
         workspace.shapeDrawing.tempLayerId = null;
       }
@@ -642,27 +668,61 @@ function updateLayerThumbnail(layer) {
     workspace.shapeDrawing.type = shapeType;
   }
 
+  // --- NOVA LÓGICA PARA DESENHAR FORMAS ---
   function drawShapeOnCanvas(ctx, shapeInfo, color, zoom = 1, scale = 1) {
     const { type, startX, startY, endX, endY } = shapeInfo;
     const width = endX - startX;
     const height = endY - startY;
+    const centerX = startX + width / 2;
+    const centerY = startY + height / 2;
 
     ctx.strokeStyle = color;
-    ctx.fillStyle = 'transparent';
+    ctx.fillStyle = color;
     ctx.lineWidth = 2 / zoom / scale;
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
     ctx.beginPath();
-    if (type === 'rectangle') {
-      ctx.rect(startX, startY, width, height);
-    } else if (type === 'circle') {
-      const radiusX = Math.abs(width / 2);
-      const radiusY = Math.abs(height / 2);
-      const centerX = startX + width / 2;
-      const centerY = startY + height / 2;
-      ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+
+    switch(type) {
+        case 'rectangle':
+            ctx.rect(startX, startY, width, height);
+            break;
+        case 'circle':
+            ctx.ellipse(centerX, centerY, Math.abs(width / 2), Math.abs(height / 2), 0, 0, 2 * Math.PI);
+            break;
+        case 'rhombus':
+            ctx.moveTo(centerX, startY);
+            ctx.lineTo(endX, centerY);
+            ctx.lineTo(centerX, endY);
+            ctx.lineTo(startX, centerY);
+            ctx.closePath();
+            break;
+        case 'star':
+            const outerRadius = Math.max(Math.abs(width), Math.abs(height)) / 2;
+            const innerRadius = outerRadius / 2;
+            const spikes = 5;
+            let rot = Math.PI / 2 * 3;
+            let x = centerX;
+            let y = centerY;
+            const step = Math.PI / spikes;
+
+            ctx.moveTo(centerX, centerY - outerRadius)
+            for (let i = 0; i < spikes; i++) {
+                x = centerX + Math.cos(rot) * outerRadius;
+                y = centerY + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y)
+                rot += step
+
+                x = centerX + Math.cos(rot) * innerRadius;
+                y = centerY + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y)
+                rot += step
+            }
+            ctx.closePath();
+            break;
     }
-    ctx.stroke();
+    // Para formas, geralmente queremos preencher e/ou contornar
+    ctx.fill();
+    // ctx.stroke(); // Descomente se quiser contorno
   }
 
 
@@ -1173,7 +1233,11 @@ function showContextMenu(visible, position = { x: 0, y: 0 }, targetId = null, is
       clearSelection();
     }
     function cutoutSelection() { if (!selectedLayer.value || !isSelectionActive.value) return; globalHistoryStore.addState(getClonedGlobalState(), 'Recortar para Nova Camada'); const selectionData = createImageFromSelection(selectedLayer.value, true); if (selectionData) { const center = getSelectionBoundingBoxCenter(); processAndAddLayer({ name: `${selectedLayer.value.name} Recorte`, type: selectedLayer.value.type, imageUrl: selectionData.imageDataUrl, metadata: { dpi: selectedLayer.value.metadata.dpi, originalWidth: selectionData.width, originalHeight: selectionData.height, }, initialPosition: center, initialScale: selectedLayer.value.scale }); } clearSelection(); }
-    function setBrushOption(option, value) { brush[option] = value; }
+    function setBrushOption(option, value) {
+        if (brush.hasOwnProperty(option)) {
+            brush[option] = value;
+        }
+    }
     function setEraserOption(option, value) { eraser[option] = value; }
     function setPrimaryColor(color) { primaryColor.value = color; }
 

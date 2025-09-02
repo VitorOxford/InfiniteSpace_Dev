@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 
-const emit = defineEmits(['close', 'color-selected']);
+const emit = defineEmits(['color-selected']);
 
 const color = reactive({ h: 0, s: 100, l: 50 });
 
@@ -32,7 +32,7 @@ const finalColorHex = computed(() => {
 });
 
 
-const hueCursorStyle = computed(() => ({ transform: `rotate(${color.h}deg) translate(88px)` }));
+const hueCursorStyle = computed(() => ({ transform: `rotate(${color.h}deg) translate(68px)` }));
 const slCursorStyle = computed(() => ({
   left: `${color.s}%`,
   bottom: `${color.l}%`,
@@ -52,7 +52,6 @@ function stopDragging() {
 }
 
 function updateHue(e) {
-  // **CORREÇÃO: Adicionado um "guard clause" para evitar o erro**
   if (!wheelRef.value) return;
   const rect = wheelRef.value.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
@@ -62,7 +61,6 @@ function updateHue(e) {
 }
 
 function updateSL(e) {
-  // **CORREÇÃO: Adicionado um "guard clause" para evitar o erro**
   if (!squareRef.value) return;
   const rect = squareRef.value.getBoundingClientRect();
   const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
@@ -86,57 +84,41 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="color-picker-overlay" @click.self="emit('close')">
-    <div class="color-picker-modal">
-      <div class="picker-main">
-        <div class="color-wheel" ref="wheelRef" @mousedown.prevent="handleMouseDownHue">
-          <div class="hue-cursor" :style="hueCursorStyle"></div>
-          <div class="sl-square" ref="squareRef" :style="{ backgroundColor: hueColor }" @mousedown.prevent="handleMouseDownSL">
-            <div class="sl-cursor" :style="slCursorStyle"></div>
-          </div>
+  <div class="color-picker-container">
+    <div class="picker-main">
+      <div class="color-wheel" ref="wheelRef" @mousedown.prevent="handleMouseDownHue">
+        <div class="hue-cursor" :style="hueCursorStyle"></div>
+        <div class="sl-square" ref="squareRef" :style="{ backgroundColor: hueColor }" @mousedown.prevent="handleMouseDownSL">
+          <div class="sl-cursor" :style="slCursorStyle"></div>
         </div>
       </div>
-      <div class="picker-controls">
-        <div class="control-group">
-          <label>H</label>
-          <input type="range" min="0" max="360" v-model.number="color.h" class="slider" />
-          <span>{{ color.h.toFixed(0) }}°</span>
-        </div>
-        <div class="control-group">
-          <label>S</label>
-          <input type="range" min="0" max="100" v-model.number="color.s" class="slider" />
-          <span>{{ color.s.toFixed(0) }}%</span>
-        </div>
-        <div class="control-group">
-          <label>L</label>
-          <input type="range" min="0" max="100" v-model.number="color.l" class="slider" />
-          <span>{{ color.l.toFixed(0) }}%</span>
-        </div>
+    </div>
+    <div class="picker-controls">
+      <div class="control-group">
+        <label>H</label>
+        <input type="range" min="0" max="360" v-model.number="color.h" class="slider" />
+        <span>{{ color.h.toFixed(0) }}°</span>
+      </div>
+      <div class="control-group">
+        <label>S</label>
+        <input type="range" min="0" max="100" v-model.number="color.s" class="slider" />
+        <span>{{ color.s.toFixed(0) }}%</span>
+      </div>
+      <div class="control-group">
+        <label>L</label>
+        <input type="range" min="0" max="100" v-model.number="color.l" class="slider" />
+        <span>{{ color.l.toFixed(0) }}%</span>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.color-picker-overlay {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw; height: 100vh;
-  z-index: 1000;
-}
-.color-picker-modal {
-  position: absolute;
-  top: 620px;
-  left: calc(var(--sidebar-width) + 12px + 35px + 12px);
-  width: 250px;
-  background-color: #3a3a3a;
-  color: #fff;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  padding: var(--spacing-4);
+.color-picker-container {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
+  padding-top: var(--spacing-2);
 }
 .picker-main {
   display: flex;
@@ -144,8 +126,8 @@ onUnmounted(() => {
   align-items: center;
 }
 .color-wheel {
-  width: 200px;
-  height: 200px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   position: relative;
   background: conic-gradient(from 90deg, hsl(0, 100%, 50%), hsl(60, 100%, 50%), hsl(120, 100%, 50%), hsl(180, 100%, 50%), hsl(240, 100%, 50%), hsl(300, 100%, 50%), hsl(0, 100%, 50%));
@@ -157,14 +139,14 @@ onUnmounted(() => {
   width: 16px; height: 16px;
   border: 2px solid white;
   border-radius: 50%;
-  transform-origin: -88px 0;
+  transform-origin: -68px 0; /* Ajustado para o novo tamanho */
   pointer-events: none;
   box-shadow: 0 0 2px rgba(0,0,0,0.5);
 }
 .sl-square {
   position: absolute;
   top: 50%; left: 50%;
-  width: 140px; height: 140px;
+  width: 110px; height: 110px; /* Ajustado para o novo tamanho */
   transform: translate(-50%, -50%) rotate(-45deg);
   background-image:
     linear-gradient(to top, hsla(0, 0%, 0%, 1), transparent),
