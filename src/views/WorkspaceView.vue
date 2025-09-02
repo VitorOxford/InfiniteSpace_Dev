@@ -17,6 +17,7 @@ import PreviewSidebar from '@/components/preview/PreviewSidebar.vue'
 import SignatureModal from '@/components/modals/SignatureModal.vue'
 import UploadModal from '@/components/modals/UploadModal.vue'
 import NewProjectModal from '@/components/modals/NewProjectModal.vue'
+import LoadingIndicator from '@/components/common/LoadingIndicator.vue' // --- ADICIONADO ---
 
 import GlobalHistoryModal from '@/components/modals/GlobalHistoryModal.vue'
 import LayerHistoryModal from '@/components/modals/LayerHistoryModal.vue'
@@ -56,7 +57,6 @@ watch(canvasWrapperRef, (newEl) => {
 });
 
 onMounted(() => {
-  // --- PROBLEMA CORRIGIDO: Removida a inicialização automática de um projeto em branco ---
   window.addEventListener('keydown', handleKeyDown);
   updateWrapperDimensions();
 });
@@ -152,6 +152,8 @@ function handleKeyDown(e) {
             &#9664; Detalhes e Aprovação
           </button>
         </div>
+
+      <LoadingIndicator v-if="store.workspace.isVectorizing" message="Vetorizando objeto..." />
 
       <ToolsSidebar
         ref="toolsSidebarRef"

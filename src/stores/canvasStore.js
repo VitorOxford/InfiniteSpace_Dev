@@ -103,9 +103,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     opacity: 1,
     hardness: 0.9,
     sensitivity: 0.5,
-    // NOVO: tipo do pincel para controlar a lógica de pintura
     type: 'basic',
-    taper: 80, // Percentagem de afilamento
+    taper: 80,
   });
   const eraser = reactive({ size: 40, opacity: 1 });
   const copiedSelection = ref(null);
@@ -122,6 +121,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     previewZoom: 1,
     previewRenderScale: 1,
     isTransforming: false,
+    isVectorizing: false,
     panels: {
       layers: { isVisible: true, isPinned: false, position: { top: 60, left: window.innerWidth - 320 }, size: { width: 300, height: 500 } },
         toolOptions: { isVisible: false, isPinned: false, position: { top: 80, left: 72 }, size: { width: 280, height: 'auto' } },
@@ -210,9 +210,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     setActiveTool('direct-select');
   }
 
-  // --- NOVA LÓGICA DE PINTURA ---
-  function applyPaintToLayer(points, totalStrokeLength) {
-    if (!selectedLayer.value || points.length < 1) return;
+  // --- LÓGICA DE PINTURA TOTALMENTE REFEITA ---
+  function applyPaintToLayer(fullStroke) {
+    if (!selectedLayer.value || fullStroke.length === 0) return;
 
     const layer = selectedLayer.value;
     if (layer.image instanceof ImageBitmap) {
@@ -230,53 +230,66 @@ export const useCanvasStore = defineStore('canvas', () => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
+    // Simula a dureza (hardness) usando shadowBlur
     const baseSize = brush.size / layer.scale / workspace.zoom;
+    ctx.shadowColor = primaryColor.value;
 
-    // --- CORREÇÃO DO BUG DO CÍRCULO ---
-    // Agora um clique único desenha um ponto que corresponde ao início de um traço
-    if (points.length === 1) {
-        const startTaper = brush.taper > 0 ? (1 - brush.taper / 100) : 1;
-        const radius = (baseSize * startTaper) / 2;
-        ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, Math.max(0.5, radius), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        layer.version++;
-        return;
+    // Se for um clique único, desenha um círculo
+    if (fullStroke.length < 2) {
+      const point = fullStroke[0];
+      const taperAmount = brush.taper > 0 ? (1.0 - (brush.taper / 100)) / 2 : 1.0;
+      const radius = Math.max(0.5, (baseSize / 2) * taperAmount);
+
+      ctx.shadowBlur = (1 - brush.hardness) * radius;
+
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      layer.version++;
+      return;
     }
 
-    let lastPoint = points[0];
-    let distanceTraveled = lastPoint.dist; // A distância já percorrida no traço
+    // Calcula o comprimento total do traço
+    let totalStrokeLength = 0;
+    for (let i = 1; i < fullStroke.length; i++) {
+        totalStrokeLength += Math.hypot(fullStroke[i].x - fullStroke[i-1].x, fullStroke[i].y - fullStroke[i-1].y);
+    }
 
-    for (let i = 1; i < points.length; i++) {
-        const currentPoint = points[i];
+    let distanceTraveled = 0;
+    for (let i = 1; i < fullStroke.length; i++) {
+      const lastPoint = fullStroke[i - 1];
+      const currentPoint = fullStroke[i];
+      const segmentLength = Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
 
-        // Fator de afilamento (taper)
-        const taperStartFraction = brush.taper / 100;
-        const taperEndFraction = 1.0 - taperStartFraction;
-        let taper = 1.0;
-        if (totalStrokeLength > 0) {
-            const progress = distanceTraveled / totalStrokeLength;
-            if (progress < taperStartFraction) {
-                taper = progress / taperStartFraction;
-            } else if (progress > taperEndFraction) {
-                taper = (1.0 - progress) / taperStartFraction;
-            }
-        }
+      // Calcula o afilamento (taper) baseado na posição ao longo do traço completo
+      const taperStartFraction = brush.taper / 100;
+      const taperEndFraction = 1.0 - taperStartFraction;
+      let taper = 1.0;
+      if (totalStrokeLength > 0) {
+          const progress = distanceTraveled / totalStrokeLength;
+          if (progress < taperStartFraction) {
+              taper = progress / taperStartFraction;
+          } else if (progress > taperEndFraction && taperStartFraction > 0) { // Evita divisão por zero
+              taper = (1.0 - progress) / taperStartFraction;
+          }
+      }
+      taper = Math.max(0.1, Math.min(1.0, taper));
 
-        const dist = Math.hypot(currentPoint.x - lastPoint.x, currentPoint.y - lastPoint.y);
-        const speed = Math.max(0.1, dist);
-        const dynamicWidth = baseSize / (1 + (speed * brush.sensitivity));
-        const lineWidth = Math.max(1.0, dynamicWidth * taper);
+      // Calcula a largura dinâmica baseada na velocidade (sensibilidade)
+      const speed = Math.max(0.1, segmentLength);
+      const dynamicWidth = baseSize / (1 + (speed * brush.sensitivity));
+      const lineWidth = Math.max(0.5, dynamicWidth * taper);
 
-        ctx.lineWidth = lineWidth;
-        ctx.beginPath();
-        ctx.moveTo(lastPoint.x, lastPoint.y);
-        ctx.lineTo(currentPoint.x, currentPoint.y);
-        ctx.stroke();
+      ctx.lineWidth = lineWidth;
+      ctx.shadowBlur = (1 - brush.hardness) * (lineWidth / 2);
 
-        lastPoint = currentPoint;
-        distanceTraveled = currentPoint.dist;
+      ctx.beginPath();
+      ctx.moveTo(lastPoint.x, lastPoint.y);
+      ctx.lineTo(currentPoint.x, currentPoint.y);
+      ctx.stroke();
+
+      distanceTraveled += segmentLength;
     }
 
     ctx.restore();
@@ -668,7 +681,6 @@ function updateLayerThumbnail(layer) {
     workspace.shapeDrawing.type = shapeType;
   }
 
-  // --- NOVA LÓGICA PARA DESENHAR FORMAS ---
   function drawShapeOnCanvas(ctx, shapeInfo, color, zoom = 1, scale = 1) {
     const { type, startX, startY, endX, endY } = shapeInfo;
     const width = endX - startX;
@@ -720,9 +732,7 @@ function updateLayerThumbnail(layer) {
             ctx.closePath();
             break;
     }
-    // Para formas, geralmente queremos preencher e/ou contornar
     ctx.fill();
-    // ctx.stroke(); // Descomente se quiser contorno
   }
 
 
@@ -1652,6 +1662,58 @@ function createDrawingLayer() {
     return newLayer;
 }
 
+  // --- NOVA FUNÇÃO PARA AJUSTAR A BOUNDING BOX DAS FORMAS ---
+  function trimLayerToObjectBounds(layerId) {
+    const layer = layers.value.find(l => l.id === layerId);
+    if (!layer || !layer.image) return;
+
+    const canvas = layer.image;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+            const alpha = data[(y * canvas.width + x) * 4 + 3];
+            if (alpha > 0) {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    }
+
+    if (maxX === -1) {
+        deleteLayer(layerId);
+        return;
+    }
+
+    const trimmedWidth = maxX - minX + 1;
+    const trimmedHeight = maxY - minY + 1;
+
+    const trimmedCanvas = document.createElement('canvas');
+    trimmedCanvas.width = trimmedWidth;
+    trimmedCanvas.height = trimmedHeight;
+    const trimmedCtx = trimmedCanvas.getContext('2d');
+    trimmedCtx.drawImage(canvas, minX, minY, trimmedWidth, trimmedHeight, 0, 0, trimmedWidth, trimmedHeight);
+
+    const worldCenterX = layer.x - (canvas.width / 2) + (minX + trimmedWidth / 2);
+    const worldCenterY = layer.y - (canvas.height / 2) + (minY + trimmedHeight / 2);
+
+    layer.image = trimmedCanvas;
+    layer.fullResImage = trimmedCanvas;
+    layer.metadata.originalWidth = trimmedWidth;
+    layer.metadata.originalHeight = trimmedHeight;
+    layer.x = worldCenterX;
+    layer.y = worldCenterY;
+
+    updateLayerThumbnail(layer);
+    layer.version++;
+  }
+
 async function vectorizeLayer(layerId) {
     console.log('%c[canvasStore] Iniciando vetorização com servidor Python...', 'color: #28a745; font-weight: bold;');
 
@@ -1660,6 +1722,8 @@ async function vectorizeLayer(layerId) {
         alert('Camada de origem não encontrada ou vazia.');
         return;
     }
+
+    workspace.isVectorizing = true;
 
     try {
         const tempCanvas = document.createElement('canvas');
@@ -1730,6 +1794,8 @@ async function vectorizeLayer(layerId) {
     } catch (error) {
         console.error('%c[canvasStore] FALHA AO VETORIZAR:', 'color: #ff0000; font-weight: bold;', error);
         alert('Ocorreu um erro durante a vetorização: ' + error.message);
+    } finally {
+        workspace.isVectorizing = false;
     }
 }
 
@@ -1755,6 +1821,7 @@ async function vectorizeLayer(layerId) {
     exportDrawnArea,
     initializeEmptyWorkspace,
     createDrawingLayer,
+    trimLayerToObjectBounds,
     vectorizeLayer,
     createFolder, renameFolder, deleteFolder, toggleFolderLock, moveLayerToFolder, toggleFolderVisibility, duplicateFolder,
     enterVectorEditMode, exitVectorEditMode, moveVectorPoint,

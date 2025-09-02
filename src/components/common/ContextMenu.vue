@@ -56,20 +56,18 @@ const zoomLevel = computed({
   },
 })
 
-// --- INÍCIO DA CORREÇÃO ---
 const menuStyle = computed(() => {
   if (!store.workspace.isContextMenuVisible) return {};
 
   const { x, y } = store.workspace.contextMenuPosition;
   const { innerWidth, innerHeight } = window;
-  const margin = 15; // Espaço das bordas da janela
+  const margin = 15;
 
-  const menuWidth = 260; // Largura fixa do menu
+  const menuWidth = 260;
 
   let finalX = x;
   let finalY = y;
 
-  // 1. Ajusta a posição horizontal para não sair da tela
   if (finalX + menuWidth + margin > innerWidth) {
     finalX = innerWidth - menuWidth - margin;
   }
@@ -77,17 +75,15 @@ const menuStyle = computed(() => {
     finalX = margin;
   }
 
-  // 2. Calcula o espaço vertical disponível e define a altura máxima
   const spaceBelow = innerHeight - finalY;
-  const maxHeight = spaceBelow - margin * 2; // Deixa uma margem em baixo
+  const maxHeight = spaceBelow - margin * 2;
 
   return {
     top: `${finalY}px`,
     left: `${finalX}px`,
-    maxHeight: `${maxHeight}px`, // Define a altura máxima
+    maxHeight: `${maxHeight}px`,
   };
 });
-// --- FIM DA CORREÇÃO ---
 
 function onClick(action) {
   if(action) action();
@@ -110,7 +106,7 @@ function onClick(action) {
         <div v-if="showZoomSlider" class="menu-section">
             <div class="zoom-slider-container">
                 <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m-3-3h6"/></svg></span>
-                <input type="range" min="10" max="1000" v-model="zoomLevel" class="zoom-slider" />
+                <input type="range" min="10" max="1000" v.model="zoomLevel" class="zoom-slider" />
                 <span>{{ zoomLevel.toFixed(0) }}%</span>
                 <button @click="showZoomSlider = false" class="close-zoom-btn">OK</button>
             </div>
@@ -271,9 +267,9 @@ function onClick(action) {
   padding: var(--spacing-2);
   width: 260px;
   backdrop-filter: blur(10px);
-  background-color: rgba(255, 255, 255, 0.85);
   /* --- CORREÇÃO APLICADA AQUI --- */
-  overflow-y: auto; /* Adiciona a barra de rolagem quando o conteúdo excede a altura máxima */
+  /* Remove a cor de fundo fixa para permitir que a variável --c-surface funcione */
+  overflow-y: auto;
 }
 .menu-section {
     display: flex;

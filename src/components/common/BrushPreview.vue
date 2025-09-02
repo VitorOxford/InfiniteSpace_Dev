@@ -24,7 +24,6 @@ const drawPreview = () => {
 
   ctx.clearRect(0, 0, width, height);
 
-  // Simula um traço com alguns pontos
   const points = [];
   for (let i = 10; i < width - 10; i += 2) {
     const y = height / 2 + Math.sin((i / width) * Math.PI * 2) * 2;
@@ -33,8 +32,10 @@ const drawPreview = () => {
 
   if (points.length === 0) return;
 
-  ctx.strokeStyle = 'black';
-  ctx.fillStyle = 'black';
+  // --- CORREÇÃO: Usa a cor do tema atual para o traço ---
+  const themeColor = getComputedStyle(canvas).getPropertyValue('--c-text-primary').trim();
+  ctx.strokeStyle = themeColor;
+  ctx.fillStyle = themeColor;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -46,7 +47,6 @@ const drawPreview = () => {
     const currentPoint = points[i];
     const distanceTraveled = currentPoint.x - 10;
 
-    // Lógica de afilamento (taper)
     const taperStartFraction = props.taper / 100;
     const taperEndFraction = 1.0 - taperStartFraction;
     let taper = 1.0;
@@ -58,19 +58,25 @@ const drawPreview = () => {
             taper = (1.0 - progress) / taperStartFraction;
         }
     }
-    taper = Math.pow(taper, 0.5); // Suaviza a curva do taper
+    taper = Math.pow(taper, 0.5);
 
     const lineWidth = Math.max(1.0, baseSize * taper);
     ctx.lineWidth = lineWidth;
+
+    // --- NOVO: Adiciona simulação de dureza (hardness) ---
+    ctx.globalAlpha = props.hardness;
+
     ctx.beginPath();
     ctx.moveTo(lastPoint.x, lastPoint.y);
     ctx.lineTo(currentPoint.x, currentPoint.y);
     ctx.stroke();
   }
+  ctx.globalAlpha = 1.0; // Reseta o alpha
 };
 
 onMounted(drawPreview);
 watch(props, drawPreview, { deep: true });
+watch(() => document.documentElement.className, drawPreview); // Redesenha ao mudar de tema
 </script>
 
 <style scoped>
@@ -82,6 +88,8 @@ watch(props, drawPreview, { deep: true });
   justify-content: center;
   border-radius: var(--radius-sm);
   background-color: var(--c-background);
+  /* --- NOVO: Adiciona uma borda sutil --- */
+  border: 1px solid var(--c-border);
 }
 canvas {
   max-width: 100%;

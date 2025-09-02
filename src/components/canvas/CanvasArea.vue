@@ -5,7 +5,7 @@ import { useImageAdjustmentsStore } from '@/stores/imageAdjustmentsStore'
 import SelectionOverlay from './SelectionOverlay.vue'
 import BoundingBox from './BoundingBox.vue'
 import VectorLayer from './VectorLayer.vue'
-import VectorEditHandles from './VectorEditHandles.vue' // IMPORTADO
+import VectorEditHandles from './VectorEditHandles.vue'
 
 const props = defineProps({
   isMobile: Boolean,
@@ -20,7 +20,7 @@ const offscreenCtx = offscreenCanvas.getContext('2d')
 
 let actionStartState = null;
 let currentActionName = null;
-let lastClickTime = 0; // ADICIONADO para double click
+let lastClickTime = 0;
 
 let isPanning = false
 let isDraggingLayer = false
@@ -285,19 +285,15 @@ function handleInteractionStart(e) {
         newLayer.name = `Forma ${store.workspace.shapeDrawing.type}`;
         store.workspace.shapeDrawing.tempLayerId = newLayer.id;
 
-        const shapeStartX = worldMouse.x;
-        const shapeStartY = worldMouse.y;
-
-        // Centraliza a nova camada onde o desenho começa
-        newLayer.x = shapeStartX;
-        newLayer.y = shapeStartY;
-
-        store.workspace.shapeDrawing.startX = shapeStartX;
-        store.workspace.shapeDrawing.startY = shapeStartY;
-        store.workspace.shapeDrawing.endX = shapeStartX;
-        store.workspace.shapeDrawing.endY = shapeStartY;
-        actionStartState = store.getClonedGlobalState();
+        // Salva o estado inicial da camada (em branco) para o histórico
+        actionStartState = store.getClonedLayerState(newLayer);
         currentActionName = 'Desenhar Forma';
+
+        // O centro da camada permanece o mesmo, o desenho é relativo a ele
+        store.workspace.shapeDrawing.startX = worldMouse.x;
+        store.workspace.shapeDrawing.startY = worldMouse.y;
+        store.workspace.shapeDrawing.endX = worldMouse.x;
+        store.workspace.shapeDrawing.endY = worldMouse.y;
         return;
     }
 
@@ -359,7 +355,7 @@ function handleInteractionStart(e) {
             isPainting = true;
             actionStartState = store.getClonedLayerState(store.selectedLayer);
             currentActionName = 'Pintura';
-            currentStroke = [layerCoords || worldMouse];
+            currentStroke = [layerCoords || worldMouse]; // Inicia o traço
             store.applyPaintToLayer(currentStroke);
             break;
         case 'bucket':
@@ -440,6 +436,7 @@ function handleInteractionMove(e) {
 
             const shapeCtx = shapeLayer.image.getContext('2d');
 
+            // As coordenadas de desenho são relativas ao centro da camada (que é o centro do documento)
             const relativeStart = {
                 x: store.workspace.shapeDrawing.startX - shapeLayer.x + shapeLayer.metadata.originalWidth / 2,
                 y: store.workspace.shapeDrawing.startY - shapeLayer.y + shapeLayer.metadata.originalHeight / 2,
@@ -476,8 +473,8 @@ function handleInteractionMove(e) {
 
     if (isPainting && store.selectedLayer) {
         const layerCoords = screenToLayerCoords(canvasMouse, store.selectedLayer);
-        currentStroke.push(layerCoords);
-        store.applyPaintToLayer(currentStroke.slice(-2));
+        currentStroke.push(layerCoords); // Acumula os pontos
+        // A lógica de renderização foi movida para o handleInteractionEnd para ter o traço completo
         return;
     }
 
@@ -523,26 +520,27 @@ function handleInteractionMove(e) {
 
 function handleInteractionEnd(e) {
     if (isDrawingShape) {
-        const shapeLayer = store.layers.find(l => l.id === store.workspace.shapeDrawing.tempLayerId);
+        const shapeLayerId = store.workspace.shapeDrawing.tempLayerId;
+        const shapeLayer = store.layers.find(l => l.id === shapeLayerId);
         if (shapeLayer) {
-            // Finaliza a forma e a commita no histórico
-            const { startX, startY, endX, endY } = store.workspace.shapeDrawing;
-            const finalWidth = Math.abs(endX - startX);
-            const finalHeight = Math.abs(endY - startY);
-
-            if(finalWidth > 1 && finalHeight > 1) {
-                // Ajusta a posição da camada para o centro da forma desenhada
-                shapeLayer.x = (startX + endX) / 2;
-                shapeLayer.y = (startY + endY) / 2;
-                store.commitLayerStateToHistory(shapeLayer.id, actionStartState, currentActionName);
-            } else {
-                // Se a forma for muito pequena, remove a camada
-                store.deleteLayer(shapeLayer.id);
-            }
+            store.trimLayerToObjectBounds(shapeLayerId);
+            store.commitLayerStateToHistory(shapeLayerId, actionStartState, currentActionName);
         }
-
         isDrawingShape = false;
         store.workspace.shapeDrawing.tempLayerId = null;
+        actionStartState = null;
+        currentActionName = null;
+    }
+
+    // --- LÓGICA DE PINTURA FINAL ---
+    if (isPainting) {
+        // Agora que o traço terminou, renderiza ele por completo de uma vez
+        store.applyPaintToLayer(currentStroke);
+        store.commitLayerStateToHistory(store.selectedLayer.id, actionStartState, currentActionName);
+        isPainting = false;
+        currentStroke = [];
+        actionStartState = null;
+        currentActionName = null;
     }
 
     if (store.workspace.isTransforming) {
@@ -572,8 +570,7 @@ function handleInteractionEnd(e) {
         if (store.activeTool === 'rect-select') store.endSelection(mousePosition)
         if (store.activeTool === 'lasso-select') store.endLasso(mousePosition)
     }
-    if (isPainting || isErasing) {
-        isPainting = false;
+    if (isErasing) {
         isErasing = false;
         currentStroke = [];
     }
